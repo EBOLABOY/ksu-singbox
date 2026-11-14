@@ -99,27 +99,27 @@
       "type": "selector",
       "tag": "PROXY",
       "outbounds": [
-        "🇭🇰 香港 VLESS (示例)",
-        "🇸🇬 新加坡 VLESS (示例)",
-        "🇺🇸 美国 VLESS (跨洋大带宽)",
-        "🇭🇰 香港 Hysteria 2 (示例)",
-        "🇸🇬 新加坡 Hysteria 2 (示例)",
-        "🇺🇸 美国 Hysteria 2"
+        "🇭🇰 [示例] 香港 VLESS (占位模板·需自行配置)",
+        "🇸🇬 [示例] 新加坡 VLESS (占位模板·需自行配置)",
+        "🇺🇸 [示例] 美国 VLESS (占位模板·需自行配置)",
+        "🇭🇰 [示例] 香港 Hysteria 2 (占位模板·需自行配置)",
+        "🇸🇬 [示例] 新加坡 Hysteria 2 (占位模板·需自行配置)",
+        "🇺🇸 [示例] 美国 Hysteria 2 (占位模板·需自行配置)"
       ],
-      "default": "🇭🇰 香港 VLESS (示例)"
+      "default": "🇭🇰 [示例] 香港 VLESS (占位模板·需自行配置)"
     },
     {
       "type": "selector",
       "tag": "MICROSOFT",
       "outbounds": [
-        "🇺🇸 美国 VLESS (跨洋大带宽)",
-        "🇺🇸 美国 Hysteria 2"
+        "🇺🇸 [示例] 美国 VLESS (占位模板·需自行配置)",
+        "🇺🇸 [示例] 美国 Hysteria 2 (占位模板·需自行配置)"
       ],
-      "default": "🇺🇸 美国 VLESS (跨洋大带宽)"
+      "default": "🇺🇸 [示例] 美国 VLESS (占位模板·需自行配置)"
     },
     {
       "type": "vless",
-      "tag": "🇭🇰 香港 VLESS (示例)",
+      "tag": "🇭🇰 [示例] 香港 VLESS (占位模板·需自行配置)",
       "server": "hk.example.com",
       "server_port": 443,
       "uuid": "00000000-0000-0000-0000-000000000000",
@@ -142,7 +142,7 @@
     },
     {
       "type": "vless",
-      "tag": "🇸🇬 新加坡 VLESS (示例)",
+      "tag": "🇸🇬 [示例] 新加坡 VLESS (占位模板·需自行配置)",
       "server": "sg.example.com",
       "server_port": 443,
       "uuid": "00000000-0000-0000-0000-000000000000",
@@ -165,7 +165,7 @@
     },
     {
       "type": "vless",
-      "tag": "🇺🇸 美国 VLESS (跨洋大带宽)",
+      "tag": "🇺🇸 [示例] 美国 VLESS (占位模板·需自行配置)",
       "server": "us.example.com",
       "server_port": 443,
       "uuid": "00000000-0000-0000-0000-000000000000",
@@ -188,7 +188,7 @@
     },
     {
       "type": "hysteria2",
-      "tag": "🇭🇰 香港 Hysteria 2 (示例)",
+      "tag": "🇭🇰 [示例] 香港 Hysteria 2 (占位模板·需自行配置)",
       "server": "hy2-hk.example.com",
       "server_port": 443,
       "password": "YourHysteria2PasswordHere",
@@ -202,7 +202,7 @@
     },
     {
       "type": "hysteria2",
-      "tag": "🇸🇬 新加坡 Hysteria 2 (示例)",
+      "tag": "🇸🇬 [示例] 新加坡 Hysteria 2 (占位模板·需自行配置)",
       "server": "hy2-sg.example.com",
       "server_port": 443,
       "password": "YourHysteria2PasswordHere",
@@ -216,7 +216,7 @@
     },
     {
       "type": "hysteria2",
-      "tag": "🇺🇸 美国 Hysteria 2",
+      "tag": "🇺🇸 [示例] 美国 Hysteria 2 (占位模板·需自行配置)",
       "server": "hy2-us.example.com",
       "server_port": 443,
       "password": "YourHysteria2PasswordHere",
