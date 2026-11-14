@@ -1,0 +1,7 @@
+*.zip
+*.tmp
+*.bak
+*.log
+box/sing-box/cache.db
+box/run/*
+!box/run/.gitkeep

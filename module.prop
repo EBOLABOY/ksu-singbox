@@ -1,0 +1,6 @@
+id=ksu-singbox
+name=KernelSU Sing-Box TProxy
+version=v1.2.0
+versionCode=20261114
+author=EBOLABOY
+description=High-performance KernelSU / APatch / Magisk transparent proxy module powered by sing-box TProxy, featuring official WebUI, smart home auto-switch, US-routed Microsoft services, and hardware-level game direct bypass.

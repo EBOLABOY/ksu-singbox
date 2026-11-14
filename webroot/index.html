@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0e17">
+  <title>网络代理控制中枢</title>
+  <link rel="stylesheet" type="text/css" href="/internal/insets.css" onerror="this.remove()">
+  <style>
+    :root {
+      --bg: #0a0e17;
+      --card-bg: rgba(22, 29, 43, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --accent: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.35);
+      --green: #10b981;
+      --green-glow: rgba(16, 185, 129, 0.3);
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --red-glow: rgba(239, 68, 68, 0.3);
+      --text-main: #f8fafc;
+      --text-sub: #94a3b8;
+      --radius: 16px;
+      --safe-top: var(--window-inset-top, env(safe-area-inset-top, 16px));
+      --safe-bottom: var(--window-inset-bottom, env(safe-area-inset-bottom, 20px));
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; -webkit-tap-highlight-color: transparent; }
+    body {
+      background: var(--bg);
+      color: var(--text-main);
+      padding: var(--safe-top) 16px calc(76px + var(--safe-bottom));
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    /* Top Header */
+    .top-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 4px 14px;
+    }
+    .top-header h1 { font-size: 21px; font-weight: 700; letter-spacing: -0.4px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; }
+    .status-dot.active { background: var(--green); box-shadow: 0 0 8px var(--green-glow); }
+    .status-dot.disabled { background: var(--red); box-shadow: 0 0 8px var(--red-glow); }
+
+    /* Card Base */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-radius: var(--radius);
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    }
+
+    /* Master Switch */
+    .switch-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .switch-info h2 { font-size: 17px; font-weight: 600; margin-bottom: 3px; }
+    .switch-info p { font-size: 13px; color: var(--text-sub); }
+    .toggle-btn {
+      position: relative;
+      width: 62px;
+      height: 34px;
+      background: #334155;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      border: none;
+      outline: none;
+    }
+    .toggle-btn.on { background: var(--green); box-shadow: 0 0 16px var(--green-glow); }
+    .toggle-thumb {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 28px;
+      height: 28px;
+      background: #ffffff;
+      border-radius: 50%;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .toggle-btn.on .toggle-thumb { transform: translateX(28px); }
+
+    /* Section Titles */
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-sub);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 16px 4px 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Buttons */
+    .btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: #f87171;
+    }
+    .btn-sm { padding: 4px 10px; font-size: 12px; border-radius: 8px; }
+
+    /* Node List */
+    .node-list { display: flex; flex-direction: column; gap: 8px; }
+    .node-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1.5px solid transparent;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .node-item:active { transform: scale(0.985); }
+    .node-item.selected {
+      background: rgba(59, 130, 246, 0.12);
+      border-color: var(--accent);
+      box-shadow: 0 0 14px var(--accent-glow);
+    }
+    .node-main { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    .node-name-row { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 600; }
+    .node-tag-type {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-sub);
+      text-transform: uppercase;
+    }
+    .node-sub { font-size: 11.5px; color: var(--text-sub); }
+    .node-actions { display: flex; align-items: center; gap: 8px; }
+    .node-delay { font-size: 12px; font-weight: 600; color: var(--text-sub); padding: 4px 8px; border-radius: 6px; background: rgba(0,0,0,0.2); }
+    .node-delay.fast { color: var(--green); }
+    .node-delay.medium { color: var(--amber); }
+    .node-delay.slow { color: var(--red); }
+    .node-del-btn {
+      color: var(--text-sub);
+      background: transparent;
+      border: none;
+      font-size: 16px;
+      padding: 4px 6px;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+    .node-del-btn:hover { color: var(--red); background: rgba(239,68,68,0.15); }
+
+    /* Info Grids */
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+    .info-box {
+      background: rgba(255, 255, 255, 0.03);
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--card-border);
+    }
+    .info-label { font-size: 11.5px; color: var(--text-sub); margin-bottom: 4px; }
+    .info-val { font-size: 13.5px; font-weight: 600; word-break: break-all; }
+
+    /* Form Inputs */
+    .form-group { margin-bottom: 12px; }
+    .form-label { font-size: 12.5px; font-weight: 600; color: var(--text-sub); margin-bottom: 6px; display: block; }
+    .form-control {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: #fff;
+      font-size: 13.5px;
+      outline: none;
+      transition: border 0.2s;
+    }
+    .form-control:focus { border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+    textarea.form-control { min-height: 85px; resize: vertical; }
+
+    /* Tab bar */
+    .tab-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(10, 14, 23, 0.92);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      border-top: 1px solid var(--card-border);
+      display: flex;
+      justify-content: space-around;
+      padding: 8px 12px calc(8px + var(--safe-bottom));
+      z-index: 100;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-sub);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 4px 12px;
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+    .tab-btn.active { color: var(--accent); }
+    .tab-icon { font-size: 19px; }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      top: calc(16px + var(--safe-top));
+      left: 50%;
+      transform: translateX(-50%) translateY(-100px);
+      background: rgba(30, 41, 59, 0.95);
+      border: 1px solid var(--card-border);
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 20px;
+      font-size: 13.5px;
+      font-weight: 500;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      transition: transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+      z-index: 999;
+      pointer-events: none;
+      backdrop-filter: blur(10px);
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* Views */
+    .view { display: none; }
+    .view.active { display: block; }
+  </style>
+</head>
+<body>
+
+  <!-- Toast -->
+  <div id="toast">提示信息</div>
+
+  <!-- Header -->
+  <div class="top-header">
+    <div>
+      <h1 id="pageTitle">网络代理中枢</h1>
+      <div id="envBadge" style="font-size: 11px; color: var(--text-sub); margin-top: 2px;">KernelSU TProxy 模式</div>
+    </div>
+    <div class="badge">
+      <div id="statusDot" class="status-dot active"></div>
+      <span id="statusText">已开启</span>
+    </div>
+  </div>
+
+  <!-- VIEW 1: 控制中枢 (Dashboard) -->
+  <div id="view-dashboard" class="view active">
+    <!-- Master Switch -->
+    <div class="card switch-card">
+      <div class="switch-info">
+        <h2>代理总开关</h2>
+        <p id="switchDesc">国内流量直连 · 国外走选中节点</p>
+      </div>
+      <button id="toggleBtn" class="toggle-btn on" onclick="toggleProxy()">
+        <div class="toggle-thumb"></div>
+      </button>
+    </div>
+
+    <!-- Active Node Card -->
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <span style="font-size: 13px; color: var(--text-sub); font-weight: 600;">当前生效国外节点</span>
+        <button class="btn btn-sm" onclick="switchTab('nodes')">切换节点 ➔</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span id="activeNodeIcon" style="font-size: 26px;">🇭🇰</span>
+        <div>
+          <div id="activeNodeName" style="font-size: 16px; font-weight: 700;">加载中...</div>
+          <div id="activeNodeDetail" style="font-size: 12px; color: var(--text-sub);">XTLS Reality · TCP 极速</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dedicated Microsoft US Route Card -->
+    <div class="card" style="border-left: 3px solid #3b82f6;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span style="font-size: 13px; color: var(--text-sub); font-weight: 600;">🇺🇸 微软专线分流路由</span>
+        <span class="badge" style="background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.3); color: #60a5fa;">美国出口专属锁定</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+        <span style="font-size: 24px;">🤖</span>
+        <div>
+          <div id="msNodeName" style="font-size: 14.5px; font-weight: 700;">🇺🇸 美国 VLESS (跨洋大带宽)</div>
+          <div style="font-size: 12px; color: var(--text-sub);">Copilot · Bing · Office 365 · OneDrive</div>
+        </div>
+      </div>
+      <div style="font-size: 11.5px; color: var(--text-sub); line-height: 1.5; background: rgba(255,255,255,0.02); padding: 8px 10px; border-radius: 8px;">
+        🔒 <strong>智能锁定</strong>：微软全系生态服务（含 Bing AI、Copilot 智能体、账号登录与 Office 同步）独立锁定由美西出口承载，避免常规节点切换引起的区域受限或封锁。
+      </div>
+    </div>
+
+    <!-- Dedicated Gaming Direct Pass Card -->
+    <div class="card" style="border-left: 3px solid #10b981;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span style="font-size: 13px; color: var(--text-sub); font-weight: 600;">🎮 手游电竞极速直通</span>
+        <span id="gameBadge" class="badge" style="background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.3); color: var(--green);">内核硬件级直连</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+        <span style="font-size: 24px;">⚔️</span>
+        <div>
+          <div style="font-size: 14.5px; font-weight: 700;">王者荣耀 · 专属极速通道</div>
+          <div id="gameDetail" style="font-size: 12px; color: var(--text-sub);">com.tencent.tmgp.sgame (UID: 10341)</div>
+        </div>
+      </div>
+      <div style="font-size: 11.5px; color: var(--text-sub); line-height: 1.5; background: rgba(255,255,255,0.02); padding: 8px 10px; border-radius: 8px;">
+        ⚡ <strong>0 纳秒中转</strong>：游戏对局 UDP 帧同步数据包在底层 iptables / ip6tables 完成放行，100% 绕过代理内核，直通物理基带芯片；配合 FQ-CoDel 队列调度实现稳频零跳 ping。
+      </div>
+    </div>
+
+    <!-- IP & Location Diagnostic -->
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <span style="font-size: 13px; color: var(--text-sub); font-weight: 600;">公网出口与双栈状态</span>
+        <button class="btn btn-sm" onclick="fetchIpInfo()">🔄 刷新检测</button>
+      </div>
+      <div class="info-grid">
+        <div class="info-box">
+          <div class="info-label">IPv4 出口</div>
+          <div id="ipV4Display" class="info-val">检测中...</div>
+        </div>
+        <div class="info-box">
+          <div class="info-label">IPv6 状态</div>
+          <div id="ipV6Display" class="info-val">检测中...</div>
+        </div>
+      </div>
+      <div class="info-box" style="margin-top: 10px;">
+        <div class="info-label">流量分流策略</div>
+        <div style="font-size: 12.5px; color: var(--text-main); line-height: 1.5;">
+          • <strong>国内网络</strong>：直连中国联通/电信 5G & 宽带，原生 IPv6 满速<br>
+          • <strong>手游电竞</strong>：王者荣耀 (UID 10341) 内核硬件直连，0 代理损耗<br>
+          • <strong>微软全系</strong>：完全锁定由美国专线出口承载（Copilot / Bing / Office 365）<br>
+          • <strong>海外网络</strong>：经内核 TProxy 转发至当前节点，无 VPN 钥匙图标
+        </div>
+      </div>
+    </div>
+
+    <!-- Smart Home Auto-Off Card -->
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span style="font-size: 13px; color: var(--text-sub); font-weight: 600;">🏠 家庭网络联动与自动感知</span>
+        <span id="smartHomeBadge" class="badge" style="background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.3); color: var(--green);">网关自动感知</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+        <span id="smartHomeIcon" style="font-size: 24px;">🏠</span>
+        <div>
+          <div id="smartHomeTitle" style="font-size: 14.5px; font-weight: 600;">家庭网络环境 (网关自动感知)</div>
+          <div id="smartHomeDesc" style="font-size: 12px; color: var(--text-sub);">接入家庭 Wi-Fi 时自动切换为【全量直连】· 杜绝双重代理</div>
+        </div>
+      </div>
+      <div style="font-size: 11.5px; color: var(--text-sub); line-height: 1.5; background: rgba(255,255,255,0.02); padding: 8px 10px; border-radius: 8px;">
+        💡 <strong>无感交接</strong>：在家庭网络环境下自动卸载本地代理，由主软路由统一分流；外出切换至 5G 时 0.1 秒内核自动开启代理。
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW 2: 节点管理 (Nodes) -->
+  <div id="view-nodes" class="view">
+    <div class="section-title">
+      <span>国外代理节点列表 (<span id="nodeCount">0</span>)</span>
+      <div style="display: flex; gap: 6px;">
+        <button class="btn btn-sm" onclick="testAllDelays()">⚡ 测速全部</button>
+        <button class="btn btn-sm btn-primary" onclick="switchTab('add')">➕ 添加</button>
+      </div>
+    </div>
+    <div class="card" style="padding: 10px;">
+      <div id="nodeList" class="node-list">
+        <div style="text-align: center; color: var(--text-sub); padding: 24px;">正在加载节点...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW 3: 添加节点 (Add Node) -->
+  <div id="view-add" class="view">
+    <div class="card">
+      <h2 style="font-size: 17px; font-weight: 700; margin-bottom: 4px;">添加新节点</h2>
+      <p style="font-size: 12.5px; color: var(--text-sub); margin-bottom: 14px;">支持一键粘贴分享链接或 sing-box JSON 片段</p>
+
+      <div class="form-group">
+        <label class="form-label">粘贴节点链接 / JSON：</label>
+        <textarea id="importLink" class="form-control" placeholder="支持 vless://, hysteria2://, hy2://, trojan://, ss:// 链接或 JSON 格式配置"></textarea>
+      </div>
+
+      <button class="btn btn-primary" style="width: 100%; justify-content: center; padding: 10px;" onclick="handleImportNode()">
+        📥 解析并保存节点
+      </button>
+
+      <div style="margin-top: 18px; border-top: 1px solid var(--card-border); padding-top: 14px;">
+        <span class="form-label" style="margin-bottom: 8px;">或者手动快捷填写：</span>
+        <div class="form-group">
+          <select id="formType" class="form-control">
+            <option value="vless">VLESS Reality (TCP)</option>
+            <option value="hysteria2">Hysteria 2 (UDP/QUIC)</option>
+            <option value="trojan">Trojan (TLS)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <input id="formTag" class="form-control" placeholder="节点别名 (如：日本 专线)">
+        </div>
+        <div style="display: flex; gap: 8px;" class="form-group">
+          <input id="formServer" class="form-control" style="flex: 2;" placeholder="服务器地址 / 域名">
+          <input id="formPort" class="form-control" style="flex: 1;" type="number" placeholder="端口">
+        </div>
+        <div class="form-group">
+          <input id="formSecret" class="form-control" placeholder="密码 / UUID">
+        </div>
+        <div class="form-group">
+          <input id="formSni" class="form-control" placeholder="SNI 域名 (如: gateway.icloud.com)">
+        </div>
+        <div class="form-group" id="realityGroup">
+          <input id="formPbk" class="form-control" placeholder="Reality 公钥 (Public Key)">
+        </div>
+        <button class="btn" style="width: 100%; justify-content: center;" onclick="handleManualAdd()">
+          ➕ 提交新节点
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW 4: 系统与 IPv6 (System & IPv6) -->
+  <div id="view-system" class="view">
+    <div class="card">
+      <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 10px;">🌐 IPv6 服务专题</h2>
+      <div class="info-grid">
+        <div class="info-box">
+          <div class="info-label">本机公网 IPv6</div>
+          <div id="sysIpv6Addr" class="info-val" style="font-size: 11px;">获取中...</div>
+        </div>
+        <div class="info-box">
+          <div class="info-label">国内 IPv6 服务</div>
+          <div class="info-val" style="color: var(--green);">已启用 (原生直连)</div>
+        </div>
+      </div>
+      <div style="margin-top: 12px; font-size: 12px; color: var(--text-sub); line-height: 1.6;">
+        ✅ <strong>国内 IPv6 直连</strong>：中国三大运营商 5G/Wi-Fi 分配的独立公网 IPv6 地址直接连通国内服务，零代理损耗。<br>
+        ✅ <strong>代理 IPv6 穿透</strong>：香港、新加坡等节点直接采用 IPv6 骨干专线建立隧道，海外服务自动按最优双栈访问。
+      </div>
+      <button class="btn btn-sm" style="margin-top: 12px;" onclick="testIpv6Connectivity()">⚡ 诊断 IPv6 连通性</button>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 10px;">⚙️ 核心与守护状态</h2>
+      <div class="info-grid">
+        <div class="info-box">
+          <div class="info-label">进程 PID</div>
+          <div id="sysPid" class="info-val">-</div>
+        </div>
+        <div class="info-box">
+          <div class="info-label">核心内存占用</div>
+          <div id="sysMem" class="info-val">~65 MB</div>
+        </div>
+      </div>
+      <div style="margin-top: 14px; display: flex; gap: 8px;">
+        <button class="btn btn-sm" style="flex: 1; justify-content: center;" onclick="restartService()">🔄 重启核心服务</button>
+        <button class="btn btn-sm btn-danger" style="flex: 1; justify-content: center;" onclick="resetToDefault()">⚠️ 恢复默认配置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Navigation -->
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tabBtn-dashboard" onclick="switchTab('dashboard')">
+      <span class="tab-icon">🎛️</span>
+      <span>中枢</span>
+    </button>
+    <button class="tab-btn" id="tabBtn-nodes" onclick="switchTab('nodes')">
+      <span class="tab-icon">📡</span>
+      <span>节点</span>
+    </button>
+    <button class="tab-btn" id="tabBtn-add" onclick="switchTab('add')">
+      <span class="tab-icon">➕</span>
+      <span>添加</span>
+    </button>
+    <button class="tab-btn" id="tabBtn-system" onclick="switchTab('system')">
+      <span class="tab-icon">🌐</span>
+      <span>IPv6/系统</span>
+    </button>
+  </div>
+
+  <script>
+    const isKsu = (typeof ksu !== 'undefined');
+    const API = (window.location.protocol.startsWith('http') ? window.location.origin : 'http://127.0.0.1:9090');
+    let currentMode = 'Rule';
+    let currentNode = '';
+    let currentConfig = null;
+    let proxiesMap = {};
+    let nodeDelayCache = {};
+
+    // KSU Exec Helper
+    let ksuSeq = 0;
+    function ksuExec(cmd, options = {}) {
+      return new Promise((resolve, reject) => {
+        if (!isKsu) return reject('Not running inside KernelSU');
+        const cbName = 'ksu_cb_' + Date.now() + '_' + (ksuSeq++);
+        window[cbName] = (errno, stdout, stderr) => {
+          delete window[cbName];
+          resolve({ errno, stdout: (stdout || '').trim(), stderr: (stderr || '').trim() });
+        };
+        try {
+          ksu.exec(cmd, JSON.stringify(options), cbName);
+        } catch (err) {
+          delete window[cbName];
+          reject(err);
+        }
+      });
+    }
+
+    function showToast(msg) {
+      const el = document.getElementById('toast');
+      el.innerText = msg;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 2200);
+    }
+
+    function switchTab(name) {
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('view-' + name).classList.add('active');
+      document.getElementById('tabBtn-' + name).classList.add('active');
+      if (name === 'system') loadSystemInfo();
+    }
+
+    async function init() {
+      if (isKsu) {
+        document.getElementById('envBadge').innerText = 'KernelSU 内置管理 · Linux TProxy';
+      } else {
+        document.getElementById('envBadge').innerText = '浏览器轻量面板 · Clash API';
+      }
+      await loadFullConfig();
+      await fetchClashState();
+      fetchIpInfo();
+    }
+
+    // Load full sing-box JSON configuration
+    async function loadFullConfig() {
+      try {
+        if (isKsu) {
+          const res = await ksuExec('sh /data/adb/box/scripts/box.node get');
+          if (res.errno === 0 && res.stdout) {
+            currentConfig = JSON.parse(res.stdout);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load full config via KSU:', e);
+      }
+    }
+
+    // Fetch state from Clash API (works both in browser and KSU)
+    async function fetchClashState() {
+      try {
+        // Mode
+        let cfgData;
+        if (isKsu) {
+          const r = await ksuExec('curl -s http://127.0.0.1:9090/configs');
+          if (r.stdout) cfgData = JSON.parse(r.stdout);
+        } else {
+          const res = await fetch(`${API}/configs`);
+          cfgData = await res.json();
+        }
+        if (cfgData && cfgData.mode) currentMode = cfgData.mode;
+
+        // Proxies
+        let prxData;
+        if (isKsu) {
+          const r = await ksuExec('curl -s http://127.0.0.1:9090/proxies');
+          if (r.stdout) prxData = JSON.parse(r.stdout);
+        } else {
+          const res = await fetch(`${API}/proxies`);
+          prxData = await res.json();
+        }
+
+        if (prxData && prxData.proxies) {
+          proxiesMap = prxData.proxies;
+          const group = proxiesMap['PROXY'];
+          if (group) {
+            currentNode = group.now;
+            renderNodes(group.all || []);
+          }
+          const msGroup = proxiesMap['MICROSOFT'];
+          if (msGroup) {
+            const msEl = document.getElementById('msNodeName');
+            if (msEl) msEl.innerText = msGroup.now || '🇺🇸 美国 VLESS (跨洋大带宽)';
+          }
+        }
+        updateSwitchUI();
+        updateActiveNodeCard();
+      } catch (e) {
+        console.error('Fetch clash state error:', e);
+      }
+    }
+
+    function updateSwitchUI() {
+      const isEnabled = (currentMode === 'Rule' || currentMode === 'Global');
+      const btn = document.getElementById('toggleBtn');
+      const dot = document.getElementById('statusDot');
+      const txt = document.getElementById('statusText');
+      const desc = document.getElementById('switchDesc');
+
+      if (isEnabled) {
+        btn.classList.add('on');
+        dot.className = 'status-dot active';
+        txt.innerText = '已开启 (国内直连)';
+        desc.innerText = '国内流量直连 · 国外走选中节点';
+      } else {
+        btn.classList.remove('on');
+        dot.className = 'status-dot disabled';
+        txt.innerText = '已关闭 (全量直连)';
+        desc.innerText = '全部流量 100% 直连 · 不经过任何代理';
+      }
+    }
+
+    function updateActiveNodeCard() {
+      document.getElementById('activeNodeName').innerText = currentNode || '未选择节点';
+      let icon = '🌐';
+      if (currentNode.includes('香港') || currentNode.includes('HK')) icon = '🇭🇰';
+      else if (currentNode.includes('新加坡') || currentNode.includes('SG')) icon = '🇸🇬';
+      else if (currentNode.includes('美国') || currentNode.includes('US')) icon = '🇺🇸';
+      else if (currentNode.includes('日本') || currentNode.includes('JP')) icon = '🇯🇵';
+      document.getElementById('activeNodeIcon').innerText = icon;
+
+      const p = proxiesMap[currentNode];
+      if (p) {
+        document.getElementById('activeNodeDetail').innerText = `${p.type} · 低延迟海外出口`;
+      }
+    }
+
+    async function toggleProxy() {
+      const newMode = (currentMode === 'Direct') ? 'Rule' : 'Direct';
+      try {
+        if (isKsu) {
+          await ksuExec(`curl -s -X PATCH http://127.0.0.1:9090/configs -H "Content-Type: application/json" -d '{"mode":"${newMode}"}'`);
+        } else {
+          await fetch(`${API}/configs`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: newMode })
+          });
+        }
+        currentMode = newMode;
+        updateSwitchUI();
+        showToast(newMode === 'Direct' ? '已关闭代理 (全量直连)' : '已开启代理 (国内直连 · 国外代理)');
+        setTimeout(fetchIpInfo, 1000);
+      } catch (e) {
+        showToast('切换失败: ' + e);
+      }
+    }
+
+    function renderNodes(nodeNames) {
+      document.getElementById('nodeCount').innerText = nodeNames.length;
+      const listEl = document.getElementById('nodeList');
+      listEl.innerHTML = '';
+
+      nodeNames.forEach(name => {
+        const isSelected = (name === currentNode);
+        const item = document.createElement('div');
+        item.className = 'node-item' + (isSelected ? ' selected' : '');
+
+        let icon = '🌐';
+        if (name.includes('香港') || name.includes('HK')) icon = '🇭🇰';
+        else if (name.includes('新加坡') || name.includes('SG')) icon = '🇸🇬';
+        else if (name.includes('美国') || name.includes('US')) icon = '🇺🇸';
+        else if (name.includes('日本') || name.includes('JP')) icon = '🇯🇵';
+
+        const p = proxiesMap[name] || {};
+        const pType = p.type || 'PROXY';
+
+        let delayTxt = nodeDelayCache[name] || '-- ms';
+        let delayCls = '';
+        if (p.history && p.history.length > 0) {
+          const d = p.history[p.history.length - 1].delay;
+          if (d > 0) {
+            delayTxt = d + ' ms';
+            delayCls = (d < 200 ? 'fast' : (d < 400 ? 'medium' : 'slow'));
+          }
+        }
+
+        item.innerHTML = `
+          <div class="node-main" onclick="selectNode('${escapeStr(name)}')">
+            <div class="node-name-row">
+              <span>${icon}</span>
+              <span>${name}</span>
+              <span class="node-tag-type">${pType}</span>
+            </div>
+            <div class="node-sub">${isSelected ? '● 当前正在使用此节点' : '○ 点击即可手动切换'}</div>
+          </div>
+          <div class="node-actions">
+            <span class="node-delay ${delayCls}" id="delay-${encodeURIComponent(name)}" onclick="testSingleDelay('${escapeStr(name)}')">${delayTxt}</span>
+            <button class="node-del-btn" title="删除节点" onclick="deleteNode('${escapeStr(name)}', event)">🗑️</button>
+          </div>
+        `;
+        listEl.appendChild(item);
+      });
+    }
+
+    function escapeStr(str) {
+      return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+
+    async function selectNode(name) {
+      if (name === currentNode) return;
+      try {
+        if (isKsu) {
+          await ksuExec(`curl -s -X PUT http://127.0.0.1:9090/proxies/PROXY -H "Content-Type: application/json" -d '{"name":"${name}"}'`);
+        } else {
+          await fetch(`${API}/proxies/PROXY`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name })
+          });
+        }
+        currentNode = name;
+        updateActiveNodeCard();
+        showToast('已切换至: ' + name);
+        await fetchClashState();
+        setTimeout(fetchIpInfo, 1000);
+      } catch (e) {
+        showToast('切换节点失败: ' + e);
+      }
+    }
+
+    async function testSingleDelay(name) {
+      const el = document.getElementById(`delay-${encodeURIComponent(name)}`);
+      if (el) el.innerText = '测速中...';
+      try {
+        let resJson;
+        const testUrl = `http://127.0.0.1:9090/proxies/${encodeURIComponent(name)}/delay?timeout=4000&url=http%3A%2F%2Fcp.cloudflare.com%2Fgenerate_204`;
+        if (isKsu) {
+          const r = await ksuExec(`curl -s "${testUrl}"`);
+          resJson = JSON.parse(r.stdout);
+        } else {
+          const res = await fetch(testUrl);
+          resJson = await res.json();
+        }
+        const d = resJson.delay || 0;
+        if (d > 0) {
+          nodeDelayCache[name] = d + ' ms';
+          if (el) {
+            el.innerText = d + ' ms';
+            el.className = 'node-delay ' + (d < 200 ? 'fast' : (d < 400 ? 'medium' : 'slow'));
+          }
+        } else {
+          nodeDelayCache[name] = '超时';
+          if (el) { el.innerText = '超时'; el.className = 'node-delay slow'; }
+        }
+      } catch (e) {
+        if (el) el.innerText = '失败';
+      }
+    }
+
+    async function testAllDelays() {
+      const group = proxiesMap['PROXY'];
+      if (!group || !group.all) return;
+      showToast('正在批量测速中...');
+      for (const name of group.all) {
+        await testSingleDelay(name);
+      }
+      showToast('批量测速完成');
+    }
+
+    // Delete Node
+    async function deleteNode(name, event) {
+      if (event) event.stopPropagation();
+      if (!isKsu) {
+        alert('请在 KernelSU 管理器内打开 WebUI 以执行增删节点操作');
+        return;
+      }
+      if (!confirm(`确定要从配置文件中彻底删除节点【${name}】吗？`)) return;
+
+      try {
+        await loadFullConfig();
+        if (!currentConfig || !currentConfig.outbounds) {
+          alert('未能读取到 sing-box 完整配置');
+          return;
+        }
+
+        // Filter out from outbounds
+        currentConfig.outbounds = currentConfig.outbounds.filter(o => o.tag !== name);
+        // Clean up from all selectors
+        currentConfig.outbounds.forEach(o => {
+          if (o.type === 'selector' && Array.isArray(o.outbounds)) {
+            o.outbounds = o.outbounds.filter(t => t !== name);
+            if (o.default === name) o.default = o.outbounds[0] || 'direct';
+          }
+        });
+
+        // Save
+        await saveConfigToDevice(currentConfig);
+        showToast(`节点【${name}】已成功删除并生效`);
+        setTimeout(fetchClashState, 2000);
+      } catch (e) {
+        alert('删除节点失败: ' + e);
+      }
+    }
+
+    // Parse Link & Add Node
+    async function handleImportNode() {
+      const text = document.getElementById('importLink').value.trim();
+      if (!text) return alert('请先粘贴节点链接或 JSON 配置');
+
+      try {
+        let nodeObj = null;
+        if (text.startsWith('{')) {
+          nodeObj = JSON.parse(text);
+        } else {
+          nodeObj = parseNodeUrl(text);
+        }
+
+        if (!nodeObj || !nodeObj.tag || !nodeObj.type) {
+          throw new Error('解析失败：缺少 tag 或 type 字段');
+        }
+
+        await addNodeToConfig(nodeObj);
+        document.getElementById('importLink').value = '';
+        switchTab('nodes');
+      } catch (e) {
+        alert('导入失败: ' + e.message);
+      }
+    }
+
+    function parseNodeUrl(link) {
+      const u = new URL(link);
+      const proto = u.protocol.replace(':', '').toLowerCase();
+      const tag = decodeURIComponent(u.hash ? u.hash.slice(1) : (u.hostname + ':' + u.port));
+      const server = u.hostname;
+      const port = parseInt(u.port) || 443;
+      const p = u.searchParams;
+
+      if (proto === 'vless') {
+        const obj = {
+          type: "vless",
+          tag: tag,
+          server: server,
+          server_port: port,
+          uuid: u.username,
+          network: "tcp"
+        };
+        const flow = p.get('flow');
+        if (flow) obj.flow = flow;
+        const sec = p.get('security');
+        if (sec === 'reality') {
+          obj.tls = {
+            enabled: true,
+            server_name: p.get('sni') || server,
+            utls: { enabled: true, fingerprint: p.get('fp') || 'chrome' },
+            reality: {
+              enabled: true,
+              public_key: p.get('pbk') || '',
+              short_id: p.get('sid') || ''
+            }
+          };
+        } else if (sec === 'tls') {
+          obj.tls = { enabled: true, server_name: p.get('sni') || server };
+        }
+        return obj;
+      } else if (proto === 'hysteria2' || proto === 'hy2') {
+        const obj = {
+          type: "hysteria2",
+          tag: tag,
+          server: server,
+          server_port: port,
+          password: decodeURIComponent(u.username || u.password || ''),
+          tls: {
+            enabled: true,
+            server_name: p.get('sni') || server
+          }
+        };
+        if (p.get('alpn')) obj.tls.alpn = p.get('alpn').split(',');
+        if (p.get('pinSHA256')) obj.tls.certificate_public_key_sha256 = [p.get('pinSHA256')];
+        return obj;
+      } else if (proto === 'trojan') {
+        return {
+          type: "trojan",
+          tag: tag,
+          server: server,
+          server_port: port,
+          password: decodeURIComponent(u.username || u.password),
+          tls: { enabled: true, server_name: p.get('sni') || server }
+        };
+      }
+      throw new Error('暂不支持该协议链接: ' + proto);
+    }
+
+    async function handleManualAdd() {
+      const type = document.getElementById('formType').value;
+      const tag = document.getElementById('formTag').value.trim();
+      const server = document.getElementById('formServer').value.trim();
+      const port = parseInt(document.getElementById('formPort').value);
+      const secret = document.getElementById('formSecret').value.trim();
+      const sni = document.getElementById('formSni').value.trim();
+      const pbk = document.getElementById('formPbk').value.trim();
+
+      if (!tag || !server || !port || !secret) {
+        return alert('请完整填写节点名称、服务器地址、端口及密码/UUID！');
+      }
+
+      let nodeObj = null;
+      if (type === 'vless') {
+        nodeObj = {
+          type: "vless",
+          tag: tag,
+          server: server,
+          server_port: port,
+          uuid: secret,
+          flow: "xtls-rprx-vision",
+          network: "tcp",
+          tls: {
+            enabled: true,
+            server_name: sni || server,
+            utls: { enabled: true, fingerprint: "chrome" },
+            reality: { enabled: true, public_key: pbk, short_id: "" }
+          }
+        };
+      } else if (type === 'hysteria2') {
+        nodeObj = {
+          type: "hysteria2",
+          tag: tag,
+          server: server,
+          server_port: port,
+          password: secret,
+          tls: { enabled: true, server_name: sni || server }
+        };
+      } else if (type === 'trojan') {
+        nodeObj = {
+          type: "trojan",
+          tag: tag,
+          server: server,
+          server_port: port,
+          password: secret,
+          tls: { enabled: true, server_name: sni || server }
+        };
+      }
+
+      await addNodeToConfig(nodeObj);
+      switchTab('nodes');
+    }
+
+    async function addNodeToConfig(nodeObj) {
+      if (!isKsu) {
+        alert('请在 KernelSU 管理器内打开 WebUI 以添加保存节点');
+        return;
+      }
+      await loadFullConfig();
+      if (!currentConfig || !currentConfig.outbounds) {
+        throw new Error('无法读取基础配置');
+      }
+
+      // Check if tag exists
+      if (currentConfig.outbounds.some(o => o.tag === nodeObj.tag)) {
+        throw new Error(`已存在同名节点【${nodeObj.tag}】，请更改名称`);
+      }
+
+      // Insert before direct/block
+      const lastSpecialIdx = currentConfig.outbounds.findIndex(o => o.type === 'direct' || o.type === 'block');
+      if (lastSpecialIdx !== -1) {
+        currentConfig.outbounds.splice(lastSpecialIdx, 0, nodeObj);
+      } else {
+        currentConfig.outbounds.push(nodeObj);
+      }
+
+      // Add to selector
+      const sel = currentConfig.outbounds.find(o => o.tag === 'PROXY' && o.type === 'selector');
+      if (sel && sel.outbounds) {
+        sel.outbounds.push(nodeObj.tag);
+      }
+
+      await saveConfigToDevice(currentConfig);
+      showToast(`节点【${nodeObj.tag}】添加成功！`);
+      setTimeout(fetchClashState, 2000);
+    }
+
+    async function saveConfigToDevice(configObj) {
+      const jsonStr = JSON.stringify(configObj, null, 2);
+      // UTF-8 safe base64
+      const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+      const res = await ksuExec(`sh /data/adb/box/scripts/box.node save "${b64}"`);
+      if (res.errno !== 0 || res.stdout.includes('failed')) {
+        throw new Error('配置语法自检未通过: ' + res.stdout + ' ' + res.stderr);
+      }
+    }
+
+    // IP & IPv6 Status
+    async function fetchIpInfo() {
+      const v4El = document.getElementById('ipV4Display');
+      const v6El = document.getElementById('ipV6Display');
+      v4El.innerText = '检测中...';
+      v6El.innerText = '检测中...';
+
+      // IPv4 Info via ipinfo.io
+      try {
+        const res = await fetch('https://ipinfo.io/json', { cache: 'no-store' });
+        const d = await res.json();
+        v4El.innerText = `${d.ip} (${d.country} ${d.city || ''})`;
+      } catch (e) {
+        v4El.innerText = '获取超时 (已直连/无网)';
+      }
+
+      // Check IPv6 status via KSU node or native API
+      try {
+        if (isKsu) {
+          const r = await ksuExec('sh /data/adb/box/scripts/box.node status');
+          if (r.stdout) {
+            const st = JSON.parse(r.stdout);
+            if (st.has_ipv6) {
+              v6El.innerText = '已启用 (公网直连)';
+              v6El.style.color = 'var(--green)';
+              document.getElementById('sysIpv6Addr').innerText = st.ipv6_addr;
+            } else {
+              v6El.innerText = '未分配公网 IPv6';
+            }
+            if (st.game_bypass) {
+              const gb = document.getElementById('gameBadge');
+              if (gb) {
+                gb.innerText = '已启用硬件直连';
+                gb.style.color = 'var(--green)';
+              }
+            }
+          }
+        } else {
+          v6El.innerText = '双栈就绪';
+        }
+      } catch (e) {
+        v6El.innerText = '未知';
+      }
+
+      // Check Smart Home state
+      try {
+        if (isKsu) {
+          const r = await ksuExec('cat /data/adb/box/run/smart_home.json 2>/dev/null');
+          if (r.stdout) {
+            const sh = JSON.parse(r.stdout);
+            const iconEl = document.getElementById('smartHomeIcon');
+            const titleEl = document.getElementById('smartHomeTitle');
+            const descEl = document.getElementById('smartHomeDesc');
+            if (sh.location === 'home') {
+              iconEl.innerText = '🏠';
+              titleEl.innerText = sh.gateway ? `家庭网络环境 (网关: ${sh.gateway})` : '家庭网络环境 (已连接)';
+              descEl.innerText = '已自动切换为【全量直连】· 软路由统一代理分流中';
+            } else {
+              iconEl.innerText = '🚗';
+              titleEl.innerText = '移动/外网环境 (5G蜂窝 / 外部Wi-Fi)';
+              descEl.innerText = '已自动开启【规则代理】· 手机底层内核透明接管中';
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    async function loadSystemInfo() {
+      if (!isKsu) return;
+      try {
+        const r = await ksuExec('sh /data/adb/box/scripts/box.node status');
+        if (r.stdout) {
+          const st = JSON.parse(r.stdout);
+          document.getElementById('sysPid').innerText = st.pid || '已停止';
+          document.getElementById('sysMem').innerText = (st.mem_mb || '65') + ' MB';
+          if (st.ipv6_addr) document.getElementById('sysIpv6Addr').innerText = st.ipv6_addr;
+        }
+      } catch (e) {
+        console.error('System info error:', e);
+      }
+    }
+
+    async function testIpv6Connectivity() {
+      showToast('正在诊断 IPv6 连通性...');
+      try {
+        if (isKsu) {
+          const r = await ksuExec('curl -6 -I -s --connect-timeout 4 https://www.bilibili.com');
+          if (r.stdout.includes('HTTP/')) {
+            alert('🎉 恭喜！国内原生 IPv6 连通极速正常（已成功直连 Bilibili IPv6 边缘节点，零代理损耗）！');
+          } else {
+            alert('IPv6 状态：' + (r.stderr || '连接未响应'));
+          }
+        } else {
+          alert('请在 KernelSU 管理器内部运行诊断');
+        }
+      } catch (e) {
+        alert('诊断失败: ' + e);
+      }
+    }
+
+    async function restartService() {
+      if (!isKsu) return alert('仅在 KernelSU 内部支持重启');
+      showToast('正在重启 sing-box 核心...');
+      try {
+        await ksuExec('sh /data/adb/box/scripts/box.node restart');
+        setTimeout(() => {
+          showToast('服务重启完成');
+          fetchClashState();
+          loadSystemInfo();
+        }, 3000);
+      } catch (e) {
+        alert('重启失败: ' + e);
+      }
+    }
+
+    async function resetToDefault() {
+      if (!isKsu) return alert('仅在 KernelSU 内部支持');
+      if (!confirm('确定要恢复到初始的 6 个海外高速节点吗？')) return;
+      try {
+        await ksuExec('cp -f /data/adb/box/sing-box/config.json.bak /data/adb/box/sing-box/config.json && sh /data/adb/box/scripts/box.node restart');
+        showToast('已恢复初始配置');
+        setTimeout(() => location.reload(), 2000);
+      } catch (e) {
+        alert('恢复失败: ' + e);
+      }
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>

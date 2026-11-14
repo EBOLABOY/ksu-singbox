@@ -1,0 +1,347 @@
+{
+  "log": {
+    "disabled": false,
+    "level": "warn",
+    "output": "/data/adb/box/run/sing-box.log",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "tag": "dns-remote",
+        "type": "https",
+        "server": "1.1.1.1",
+        "server_port": 443,
+        "detour": "PROXY"
+      },
+      {
+        "tag": "dns-direct",
+        "type": "udp",
+        "server": "223.5.5.5"
+      },
+      {
+        "tag": "dns-fakeip",
+        "type": "fakeip",
+        "inet4_range": "198.18.0.0/15"
+      }
+    ],
+    "rules": [
+      {
+        "clash_mode": "Direct",
+        "server": "dns-direct"
+      },
+      {
+        "rule_set": [
+          "geosite-microsoft"
+        ],
+        "server": "dns-fakeip"
+      },
+      {
+        "domain_suffix": [
+          "bing.com",
+          "bing.net",
+          "bingapis.com",
+          "copilot.microsoft.com",
+          "designer.microsoft.com",
+          "sydney.bing.com",
+          "edgeservices.bing.com",
+          "microsoft.com",
+          "live.com",
+          "office.com",
+          "office365.com",
+          "onedrive.com",
+          "sharepoint.com",
+          "outlook.com",
+          "hotmail.com",
+          "azure.com",
+          "azure.net",
+          "windows.net",
+          "msauth.net",
+          "msftauth.net",
+          "msocdn.com",
+          "microsoftonline.com",
+          "xbox.com",
+          "xboxlive.com",
+          "gamepass.com",
+          "clarity.ms",
+          "aka.ms",
+          "1drv.ms"
+        ],
+        "server": "dns-fakeip"
+      },
+      {
+        "rule_set": [
+          "geosite-cn"
+        ],
+        "server": "dns-direct"
+      },
+      {
+        "query_type": [
+          "A",
+          "AAAA"
+        ],
+        "server": "dns-fakeip"
+      }
+    ]
+  },
+  "inbounds": [
+    {
+      "type": "tproxy",
+      "tag": "tproxy-in",
+      "listen": "::",
+      "listen_port": 1536,
+      "udp_timeout": "30s",
+      "tcp_fast_open": true
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "selector",
+      "tag": "PROXY",
+      "outbounds": [
+        "🇭🇰 香港 VLESS (示例)",
+        "🇸🇬 新加坡 VLESS (示例)",
+        "🇺🇸 美国 VLESS (跨洋大带宽)",
+        "🇭🇰 香港 Hysteria 2 (示例)",
+        "🇸🇬 新加坡 Hysteria 2 (示例)",
+        "🇺🇸 美国 Hysteria 2"
+      ],
+      "default": "🇭🇰 香港 VLESS (示例)"
+    },
+    {
+      "type": "selector",
+      "tag": "MICROSOFT",
+      "outbounds": [
+        "🇺🇸 美国 VLESS (跨洋大带宽)",
+        "🇺🇸 美国 Hysteria 2"
+      ],
+      "default": "🇺🇸 美国 VLESS (跨洋大带宽)"
+    },
+    {
+      "type": "vless",
+      "tag": "🇭🇰 香港 VLESS (示例)",
+      "server": "hk.example.com",
+      "server_port": 443,
+      "uuid": "00000000-0000-0000-0000-000000000000",
+      "flow": "xtls-rprx-vision",
+      "packet_encoding": "xudp",
+      "tcp_fast_open": true,
+      "tls": {
+        "enabled": true,
+        "server_name": "gateway.icloud.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "YourRealityPublicKeyHere_SamplePlaceholder11",
+          "short_id": "0123456789abcdef"
+        }
+      }
+    },
+    {
+      "type": "vless",
+      "tag": "🇸🇬 新加坡 VLESS (示例)",
+      "server": "sg.example.com",
+      "server_port": 443,
+      "uuid": "00000000-0000-0000-0000-000000000000",
+      "flow": "xtls-rprx-vision",
+      "packet_encoding": "xudp",
+      "tcp_fast_open": true,
+      "tls": {
+        "enabled": true,
+        "server_name": "apple.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "YourRealityPublicKeyHere_SamplePlaceholder22",
+          "short_id": "0123456789abcdef"
+        }
+      }
+    },
+    {
+      "type": "vless",
+      "tag": "🇺🇸 美国 VLESS (跨洋大带宽)",
+      "server": "us.example.com",
+      "server_port": 443,
+      "uuid": "00000000-0000-0000-0000-000000000000",
+      "flow": "xtls-rprx-vision",
+      "packet_encoding": "xudp",
+      "tcp_fast_open": true,
+      "tls": {
+        "enabled": true,
+        "server_name": "addons.mozilla.org",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "YourRealityPublicKeyHere_SamplePlaceholder33",
+          "short_id": "0123456789abcdef"
+        }
+      }
+    },
+    {
+      "type": "hysteria2",
+      "tag": "🇭🇰 香港 Hysteria 2 (示例)",
+      "server": "hy2-hk.example.com",
+      "server_port": 443,
+      "password": "YourHysteria2PasswordHere",
+      "tls": {
+        "enabled": true,
+        "server_name": "www.bing.com",
+        "alpn": [
+          "h3"
+        ]
+      }
+    },
+    {
+      "type": "hysteria2",
+      "tag": "🇸🇬 新加坡 Hysteria 2 (示例)",
+      "server": "hy2-sg.example.com",
+      "server_port": 443,
+      "password": "YourHysteria2PasswordHere",
+      "tls": {
+        "enabled": true,
+        "server_name": "www.bing.com",
+        "alpn": [
+          "h3"
+        ]
+      }
+    },
+    {
+      "type": "hysteria2",
+      "tag": "🇺🇸 美国 Hysteria 2",
+      "server": "hy2-us.example.com",
+      "server_port": 443,
+      "password": "YourHysteria2PasswordHere",
+      "tls": {
+        "enabled": true,
+        "server_name": "www.bing.com",
+        "alpn": [
+          "h3"
+        ]
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "clash_mode": "Direct",
+        "outbound": "direct"
+      },
+      {
+        "action": "sniff"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "clash_mode": "Global",
+        "outbound": "PROXY"
+      },
+      {
+        "ip_is_private": true,
+        "outbound": "direct"
+      },
+      {
+        "rule_set": [
+          "geosite-microsoft"
+        ],
+        "outbound": "MICROSOFT"
+      },
+      {
+        "domain_suffix": [
+          "bing.com",
+          "bing.net",
+          "bingapis.com",
+          "copilot.microsoft.com",
+          "designer.microsoft.com",
+          "sydney.bing.com",
+          "edgeservices.bing.com",
+          "microsoft.com",
+          "live.com",
+          "office.com",
+          "office365.com",
+          "onedrive.com",
+          "sharepoint.com",
+          "outlook.com",
+          "hotmail.com",
+          "azure.com",
+          "azure.net",
+          "windows.net",
+          "msauth.net",
+          "msftauth.net",
+          "msocdn.com",
+          "microsoftonline.com",
+          "xbox.com",
+          "xboxlive.com",
+          "gamepass.com",
+          "clarity.ms",
+          "aka.ms",
+          "1drv.ms"
+        ],
+        "outbound": "MICROSOFT"
+      },
+      {
+        "rule_set": [
+          "geoip-cn",
+          "geosite-cn"
+        ],
+        "outbound": "direct"
+      }
+    ],
+    "rule_set": [
+      {
+        "tag": "geoip-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
+        "download_detour": "PROXY"
+      },
+      {
+        "tag": "geosite-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+        "download_detour": "PROXY"
+      },
+      {
+        "tag": "geosite-microsoft",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-microsoft.srs",
+        "download_detour": "PROXY"
+      }
+    ],
+    "final": "PROXY",
+    "default_domain_resolver": "dns-direct",
+    "auto_detect_interface": true
+  },
+  "experimental": {
+    "clash_api": {
+      "external_controller": "127.0.0.1:9090",
+      "external_ui": "/data/adb/box/sing-box/ui",
+      "default_mode": "Rule"
+    },
+    "cache_file": {
+      "enabled": true,
+      "path": "/data/adb/box/sing-box/cache.db",
+      "store_fakeip": false
+    }
+  }
+}
