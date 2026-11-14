@@ -59,11 +59,12 @@ Traditional user-space proxy apps on Android (e.g., ClashForAndroid, v2rayNG, si
   - TCP Fast Open 3: Accelerates handshakes.
   - Disabled slow-start restart (`tcp_slow_start_after_idle=0`): Keeps long-lived sockets hot, eliminating first-packet stalls on screen wake.
 
-### 5. 📱 Official KernelSU WebUI Integration
-- Embedded dark-mode responsive dashboard tailored for mobile screens.
-- Open directly inside KernelSU / APatch Manager by clicking the **"Web Config"** icon on the module card.
-- Also accessible via external browsers at `http://127.0.0.1:9090/ui`.
-- Real-time proxy status, smart home sensing status card, gaming bypass indicator, Microsoft route indicator, node switching, ping latency benchmarks, and full-stack IPv6 diagnosis.
+### 5. 📱 Modern High-Performance WebUI (Adopting Zashboard & boxproxy Strengths)
+- 🚀 **Live Traffic Speedometer & Canvas Sparkline Waveform**: Real-time upload/download speeds with hardware-accelerated sparkline curves.
+- 🔍 **Active Connections Inspector & Disconnector**: Real-time audit of every active socket (target host, port, destination IP, matched rule e.g. `geosite-microsoft` or `direct`, and transferred bytes) with individual and kill-all options.
+- ⚡ **Parallel Concurrent Batch Ping & Auto-Sort**: Fast multi-threaded latency benchmarks with one-click ascending delay auto-sorting.
+- 🔄 **Online GeoIP / GeoSite Rule-Set Hot Updater**: Integrated `box.tool update-geo` to synchronize the latest SagerNet rule-sets with zero-latency daemon hot-reload.
+- 📱 **Official KernelSU / APatch Manager Integration**: Single-file instant load (only ~50KB) with native mobile dark aesthetics.
 
 ### 6. 🌐 True Dual-Stack IPv6 Transparent Proxy
 - Native IPv6 direct pass-through for domestic high-speed connectivity.

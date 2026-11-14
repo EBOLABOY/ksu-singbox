@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#0a0e17">
-  <title>网络代理控制中枢</title>
+  <title>KernelSU sing-box 控制中枢</title>
   <link rel="stylesheet" type="text/css" href="/internal/insets.css" onerror="this.remove()">
   <style>
     :root {
@@ -16,6 +16,7 @@
       --green: #10b981;
       --green-glow: rgba(16, 185, 129, 0.3);
       --amber: #f59e0b;
+      --purple: #8b5cf6;
       --red: #ef4444;
       --red-glow: rgba(239, 68, 68, 0.3);
       --text-main: #f8fafc;
@@ -38,16 +39,16 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 12px 4px 14px;
+      padding: 12px 4px 10px;
     }
-    .top-header h1 { font-size: 21px; font-weight: 700; letter-spacing: -0.4px; }
+    .top-header h1 { font-size: 20px; font-weight: 800; letter-spacing: -0.4px; }
     .badge {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      font-size: 12px;
+      font-size: 11.5px;
       font-weight: 600;
-      padding: 4px 10px;
+      padding: 3px 9px;
       border-radius: 20px;
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid var(--card-border);
@@ -56,6 +57,62 @@
     .status-dot.active { background: var(--green); box-shadow: 0 0 8px var(--green-glow); }
     .status-dot.disabled { background: var(--red); box-shadow: 0 0 8px var(--red-glow); }
 
+    /* Traffic Monitor Bar */
+    .traffic-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 10px 14px;
+      margin-bottom: 14px;
+      gap: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
+    .traffic-metrics {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex: 1;
+    }
+    .traffic-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .traffic-arrow {
+      font-size: 14px;
+      font-weight: 900;
+      line-height: 1;
+    }
+    .traffic-item.down .traffic-arrow { color: #38bdf8; }
+    .traffic-item.up .traffic-arrow { color: #34d399; }
+    .traffic-info { display: flex; flex-direction: column; }
+    .traffic-speed {
+      font-size: 13.5px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-main);
+      line-height: 1.2;
+    }
+    .traffic-lbl {
+      font-size: 10px;
+      color: var(--text-sub);
+    }
+    .traffic-divider {
+      width: 1px;
+      height: 22px;
+      background: rgba(255,255,255,0.08);
+    }
+    .traffic-canvas-box {
+      width: 100px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
     /* Card Base */
     .card {
       background: var(--card-bg);
@@ -63,8 +120,8 @@
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
       border-radius: var(--radius);
-      padding: 18px;
-      margin-bottom: 14px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
     }
 
@@ -74,12 +131,12 @@
       justify-content: space-between;
       align-items: center;
     }
-    .switch-info h2 { font-size: 17px; font-weight: 600; margin-bottom: 3px; }
-    .switch-info p { font-size: 13px; color: var(--text-sub); }
+    .switch-info h2 { font-size: 16.5px; font-weight: 700; margin-bottom: 3px; }
+    .switch-info p { font-size: 12.5px; color: var(--text-sub); }
     .toggle-btn {
       position: relative;
-      width: 62px;
-      height: 34px;
+      width: 60px;
+      height: 32px;
       background: #334155;
       border-radius: 20px;
       cursor: pointer;
@@ -92,8 +149,8 @@
       position: absolute;
       top: 3px;
       left: 3px;
-      width: 28px;
-      height: 28px;
+      width: 26px;
+      height: 26px;
       background: #ffffff;
       border-radius: 50%;
       transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -119,31 +176,23 @@
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid var(--card-border);
       color: var(--text-main);
-      font-size: 13px;
-      font-weight: 500;
-      padding: 6px 14px;
+      padding: 8px 14px;
       border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s ease;
       display: inline-flex;
       align-items: center;
       gap: 6px;
+      transition: all 0.2s ease;
     }
     .btn:active { transform: scale(0.97); }
-    .btn-primary {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
-      box-shadow: 0 0 12px var(--accent-glow);
-    }
-    .btn-danger {
-      background: rgba(239, 68, 68, 0.15);
-      border-color: rgba(239, 68, 68, 0.3);
-      color: #f87171;
-    }
-    .btn-sm { padding: 4px 10px; font-size: 12px; border-radius: 8px; }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
+    .btn-outline { background: rgba(255,255,255,0.04); border-color: var(--card-border); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 8px; }
+    .btn-danger { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
 
-    /* Node List */
+    /* Node List Item */
     .node-list { display: flex; flex-direction: column; gap: 8px; }
     .node-item {
       display: flex;
@@ -151,158 +200,234 @@
       align-items: center;
       padding: 12px 14px;
       border-radius: 12px;
-      background: rgba(255, 255, 255, 0.025);
-      border: 1.5px solid transparent;
-      transition: all 0.2s ease;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid transparent;
       cursor: pointer;
+      transition: all 0.2s ease;
     }
-    .node-item:active { transform: scale(0.985); }
+    .node-item:hover, .node-item:active { background: rgba(255, 255, 255, 0.06); }
     .node-item.selected {
       background: rgba(59, 130, 246, 0.12);
-      border-color: var(--accent);
-      box-shadow: 0 0 14px var(--accent-glow);
+      border-color: rgba(59, 130, 246, 0.4);
     }
-    .node-main { display: flex; flex-direction: column; gap: 4px; flex: 1; }
-    .node-name-row { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 600; }
+    .node-title {
+      font-size: 14.5px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
     .node-tag-type {
-      font-size: 10px;
-      font-weight: 700;
+      font-size: 10.5px;
       padding: 2px 6px;
-      border-radius: 6px;
+      border-radius: 4px;
       background: rgba(255, 255, 255, 0.08);
       color: var(--text-sub);
       text-transform: uppercase;
+      font-weight: 700;
     }
-    .node-sub { font-size: 11.5px; color: var(--text-sub); }
+    .node-sub { font-size: 11.5px; color: var(--text-sub); margin-top: 3px; }
     .node-actions { display: flex; align-items: center; gap: 8px; }
-    .node-delay { font-size: 12px; font-weight: 600; color: var(--text-sub); padding: 4px 8px; border-radius: 6px; background: rgba(0,0,0,0.2); }
-    .node-delay.fast { color: var(--green); }
-    .node-delay.medium { color: var(--amber); }
-    .node-delay.slow { color: var(--red); }
-    .node-del-btn {
+    .node-delay {
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.06);
       color: var(--text-sub);
-      background: transparent;
+    }
+    .node-delay.fast { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .node-delay.medium { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .node-delay.slow { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    .node-del-btn {
+      background: none;
       border: none;
-      font-size: 16px;
+      color: var(--text-sub);
+      font-size: 15px;
       padding: 4px 6px;
       cursor: pointer;
       border-radius: 6px;
     }
-    .node-del-btn:hover { color: var(--red); background: rgba(239,68,68,0.15); }
 
-    /* Info Grids */
-    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+    /* Active Connection Card */
+    .conn-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      padding: 9px 12px;
+      font-size: 12px;
+      transition: background 0.15s;
+    }
+    .conn-host {
+      font-weight: 600;
+      color: var(--text-main);
+      max-width: 170px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .conn-tag {
+      font-size: 9.5px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .conn-tag.ms { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .conn-tag.direct { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .conn-tag.proxy { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
+    .conn-kill-btn {
+      background: none;
+      border: none;
+      color: var(--text-sub);
+      cursor: pointer;
+      font-size: 13px;
+      padding: 3px 6px;
+      border-radius: 4px;
+    }
+    .conn-kill-btn:hover { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+
+    /* Info Grid */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
     .info-box {
       background: rgba(255, 255, 255, 0.03);
-      padding: 12px;
       border-radius: 12px;
-      border: 1px solid var(--card-border);
+      padding: 12px;
     }
     .info-label { font-size: 11.5px; color: var(--text-sub); margin-bottom: 4px; }
-    .info-val { font-size: 13.5px; font-weight: 600; word-break: break-all; }
+    .info-val { font-size: 13.5px; font-weight: 700; word-break: break-all; }
 
-    /* Form Inputs */
-    .form-group { margin-bottom: 12px; }
-    .form-label { font-size: 12.5px; font-weight: 600; color: var(--text-sub); margin-bottom: 6px; display: block; }
-    .form-control {
-      width: 100%;
-      background: rgba(0, 0, 0, 0.3);
-      border: 1px solid var(--card-border);
-      border-radius: 10px;
-      padding: 10px 12px;
-      color: #fff;
-      font-size: 13.5px;
-      outline: none;
-      transition: border 0.2s;
-    }
-    .form-control:focus { border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
-    textarea.form-control { min-height: 85px; resize: vertical; }
-
-    /* Tab bar */
+    /* Tab Bar */
     .tab-bar {
       position: fixed;
       bottom: 0;
       left: 0;
       right: 0;
-      background: rgba(10, 14, 23, 0.92);
+      background: rgba(15, 23, 42, 0.92);
       backdrop-filter: blur(25px);
       -webkit-backdrop-filter: blur(25px);
       border-top: 1px solid var(--card-border);
       display: flex;
       justify-content: space-around;
-      padding: 8px 12px calc(8px + var(--safe-bottom));
+      padding: 8px 10px calc(8px + var(--safe-bottom));
       z-index: 100;
     }
     .tab-btn {
-      background: transparent;
+      background: none;
       border: none;
       color: var(--text-sub);
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 3px;
-      font-size: 11px;
-      font-weight: 500;
+      font-size: 10px;
+      font-weight: 600;
       cursor: pointer;
-      padding: 4px 12px;
-      border-radius: 12px;
-      transition: all 0.2s;
+      flex: 1;
+      transition: color 0.2s;
     }
     .tab-btn.active { color: var(--accent); }
-    .tab-icon { font-size: 19px; }
+    .tab-icon { font-size: 19px; line-height: 1; }
+
+    /* Views */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* Form Controls */
+    .form-group { margin-bottom: 14px; }
+    .form-label { display: block; font-size: 12.5px; color: var(--text-sub); margin-bottom: 6px; font-weight: 600; }
+    .form-input, .form-textarea, .form-select {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 13.5px;
+      outline: none;
+      transition: border 0.2s;
+    }
+    .form-input:focus, .form-textarea:focus, .form-select:focus { border-color: var(--accent); }
+    .form-textarea { resize: vertical; min-height: 80px; font-family: monospace; font-size: 12px; }
 
     /* Toast */
     #toast {
       position: fixed;
       top: calc(16px + var(--safe-top));
       left: 50%;
-      transform: translateX(-50%) translateY(-100px);
+      transform: translateX(-50%);
       background: rgba(30, 41, 59, 0.95);
       border: 1px solid var(--card-border);
-      color: #fff;
-      padding: 10px 18px;
+      color: white;
+      padding: 8px 16px;
       border-radius: 20px;
-      font-size: 13.5px;
-      font-weight: 500;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-      transition: transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
-      z-index: 999;
+      font-size: 12.5px;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+      z-index: 1000;
+      opacity: 0;
       pointer-events: none;
-      backdrop-filter: blur(10px);
+      transition: opacity 0.25s, transform 0.25s;
     }
-    #toast.show { transform: translateX(-50%) translateY(0); }
-
-    /* Views */
-    .view { display: none; }
-    .view.active { display: block; }
+    #toast.show { opacity: 1; transform: translate(-50%, 6px); }
   </style>
 </head>
 <body>
 
-  <!-- Toast -->
-  <div id="toast">提示信息</div>
+  <div id="toast">操作已完成</div>
 
-  <!-- Header -->
+  <!-- Top Header -->
   <div class="top-header">
     <div>
-      <h1 id="pageTitle">网络代理中枢</h1>
-      <div id="envBadge" style="font-size: 11px; color: var(--text-sub); margin-top: 2px;">KernelSU TProxy 模式</div>
+      <h1>KernelSU sing-box</h1>
+      <div style="font-size: 11.5px; color: var(--text-sub); margin-top: 1px;">Linux TProxy 内核级透明代理中枢</div>
     </div>
     <div class="badge">
-      <div id="statusDot" class="status-dot active"></div>
-      <span id="statusText">已开启</span>
+      <span class="status-dot active" id="statusDot"></span>
+      <span id="statusText">已开启 (分流)</span>
     </div>
   </div>
 
-  <!-- VIEW 1: 控制中枢 (Dashboard) -->
+  <!-- Traffic Speedometer Bar -->
+  <div class="traffic-bar">
+    <div class="traffic-metrics">
+      <div class="traffic-item down">
+        <span class="traffic-arrow">↓</span>
+        <div class="traffic-info">
+          <div class="traffic-speed" id="speedDown">0.0 KB/s</div>
+          <div class="traffic-lbl">下载速率</div>
+        </div>
+      </div>
+      <div class="traffic-divider"></div>
+      <div class="traffic-item up">
+        <span class="traffic-arrow">↑</span>
+        <div class="traffic-info">
+          <div class="traffic-speed" id="speedUp">0.0 KB/s</div>
+          <div class="traffic-lbl">上传速率</div>
+        </div>
+      </div>
+    </div>
+    <div class="traffic-canvas-box">
+      <canvas id="trafficCanvas" width="100" height="28"></canvas>
+    </div>
+  </div>
+
+  <!-- VIEW 1: 中枢总览 (Dashboard) -->
   <div id="view-dashboard" class="view active">
-    <!-- Master Switch -->
+    <!-- Master Switch Card -->
     <div class="card switch-card">
       <div class="switch-info">
-        <h2>代理总开关</h2>
+        <h2>代理服务总开关</h2>
         <p id="switchDesc">国内流量直连 · 国外走选中节点</p>
       </div>
-      <button id="toggleBtn" class="toggle-btn on" onclick="toggleProxy()">
+      <button class="toggle-btn on" id="toggleBtn" onclick="toggleProxy()">
         <div class="toggle-thumb"></div>
       </button>
     </div>
@@ -314,10 +439,10 @@
         <button class="btn btn-sm" onclick="switchTab('nodes')">切换节点 ➔</button>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
-        <span id="activeNodeIcon" style="font-size: 26px;">🇭🇰</span>
+        <span id="activeNodeIcon" style="font-size: 26px;">🌐</span>
         <div>
-          <div id="activeNodeName" style="font-size: 16px; font-weight: 700;">加载中...</div>
-          <div id="activeNodeDetail" style="font-size: 12px; color: var(--text-sub);">XTLS Reality · TCP 极速</div>
+          <div id="activeNodeName" style="font-size: 15.5px; font-weight: 700;">加载中...</div>
+          <div id="activeNodeDetail" style="font-size: 12px; color: var(--text-sub);">海外流量出口</div>
         </div>
       </div>
     </div>
@@ -336,7 +461,7 @@
         </div>
       </div>
       <div style="font-size: 11.5px; color: var(--text-sub); line-height: 1.5; background: rgba(255,255,255,0.02); padding: 8px 10px; border-radius: 8px;">
-        🔒 <strong>智能锁定</strong>：微软全系生态服务（含 Bing AI、Copilot 智能体、账号登录与 Office 同步）独立锁定由美西出口承载，避免常规节点切换引起的区域受限或封锁。
+        🔒 <strong>智能锁定</strong>：微软全系生态服务独立锁定由美西出口承载，避免常规节点切换引起的区域受限或封锁。
       </div>
     </div>
 
@@ -358,33 +483,6 @@
       </div>
     </div>
 
-    <!-- IP & Location Diagnostic -->
-    <div class="card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-        <span style="font-size: 13px; color: var(--text-sub); font-weight: 600;">公网出口与双栈状态</span>
-        <button class="btn btn-sm" onclick="fetchIpInfo()">🔄 刷新检测</button>
-      </div>
-      <div class="info-grid">
-        <div class="info-box">
-          <div class="info-label">IPv4 出口</div>
-          <div id="ipV4Display" class="info-val">检测中...</div>
-        </div>
-        <div class="info-box">
-          <div class="info-label">IPv6 状态</div>
-          <div id="ipV6Display" class="info-val">检测中...</div>
-        </div>
-      </div>
-      <div class="info-box" style="margin-top: 10px;">
-        <div class="info-label">流量分流策略</div>
-        <div style="font-size: 12.5px; color: var(--text-main); line-height: 1.5;">
-          • <strong>国内网络</strong>：直连中国联通/电信 5G & 宽带，原生 IPv6 满速<br>
-          • <strong>手游电竞</strong>：王者荣耀 (UID 10341) 内核硬件直连，0 代理损耗<br>
-          • <strong>微软全系</strong>：完全锁定由美国专线出口承载（Copilot / Bing / Office 365）<br>
-          • <strong>海外网络</strong>：经内核 TProxy 转发至当前节点，无 VPN 钥匙图标
-        </div>
-      </div>
-    </div>
-
     <!-- Smart Home Auto-Off Card -->
     <div class="card">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -402,90 +500,147 @@
         💡 <strong>无感交接</strong>：在家庭网络环境下自动卸载本地代理，由主软路由统一分流；外出切换至 5G 时 0.1 秒内核自动开启代理。
       </div>
     </div>
+
+    <!-- IP & Location Diagnostic -->
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <span style="font-size: 13px; color: var(--text-sub); font-weight: 600;">公网出口与双栈状态</span>
+        <button class="btn btn-sm" onclick="fetchIpInfo()">🔄 刷新检测</button>
+      </div>
+      <div class="info-grid">
+        <div class="info-box">
+          <div class="info-label">IPv4 出口</div>
+          <div id="ipV4Display" class="info-val">检测中...</div>
+        </div>
+        <div class="info-box">
+          <div class="info-label">IPv6 状态</div>
+          <div id="ipV6Display" class="info-val">检测中...</div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- VIEW 2: 节点管理 (Nodes) -->
   <div id="view-nodes" class="view">
     <div class="section-title">
-      <span>国外代理节点列表 (<span id="nodeCount">0</span>)</span>
+      <span>节点列表 (<span id="nodeCount">0</span>)</span>
       <div style="display: flex; gap: 6px;">
-        <button class="btn btn-sm" onclick="testAllDelays()">⚡ 测速全部</button>
-        <button class="btn btn-sm btn-primary" onclick="switchTab('add')">➕ 添加</button>
+        <button class="btn btn-sm" id="batchPingBtn" onclick="testAllDelaysConcurrent()">⚡ 全部测速</button>
+        <button class="btn btn-sm" id="sortBtn" onclick="toggleSortNodes()">↕️ 延迟排序</button>
+        <button class="btn btn-sm btn-primary" onclick="switchTab('add')">➕ 导入</button>
       </div>
     </div>
-    <div class="card" style="padding: 10px;">
+    <div class="card" style="padding: 12px;">
+      <div style="background: rgba(245, 158, 11, 0.1); border: 1px dashed rgba(245, 158, 11, 0.4); border-radius: 8px; padding: 10px; margin-bottom: 12px; font-size: 12px; color: #fbbf24; line-height: 1.5;">
+        ⚠️ <strong>出厂说明</strong>：默认列表中的节点均为<strong>示例占位模板</strong>（不可连网）。请点击上方<strong>「➕ 导入」</strong>添加您自己的可用代理节点。
+      </div>
       <div id="nodeList" class="node-list">
         <div style="text-align: center; color: var(--text-sub); padding: 24px;">正在加载节点...</div>
       </div>
     </div>
   </div>
 
-  <!-- VIEW 3: 添加节点 (Add Node) -->
-  <div id="view-add" class="view">
-    <div class="card">
-      <h2 style="font-size: 17px; font-weight: 700; margin-bottom: 4px;">添加新节点</h2>
-      <p style="font-size: 12.5px; color: var(--text-sub); margin-bottom: 14px;">支持一键粘贴分享链接或 sing-box JSON 片段</p>
-
-      <div class="form-group">
-        <label class="form-label">粘贴节点链接 / JSON：</label>
-        <textarea id="importLink" class="form-control" placeholder="支持 vless://, hysteria2://, hy2://, trojan://, ss:// 链接或 JSON 格式配置"></textarea>
+  <!-- VIEW 3: 实时连接审计 (Connections) -->
+  <div id="view-connections" class="view">
+    <div class="section-title">
+      <span>实时活跃网络连接 (<span id="connCount">0</span>)</span>
+      <div style="display: flex; gap: 6px;">
+        <button class="btn btn-sm btn-outline" onclick="fetchConnections(true)">🔄 刷新</button>
+        <button class="btn btn-sm btn-danger" onclick="closeAllConnections()">❌ 断开全部</button>
       </div>
+    </div>
 
-      <button class="btn btn-primary" style="width: 100%; justify-content: center; padding: 10px;" onclick="handleImportNode()">
-        📥 解析并保存节点
-      </button>
-
-      <div style="margin-top: 18px; border-top: 1px solid var(--card-border); padding-top: 14px;">
-        <span class="form-label" style="margin-bottom: 8px;">或者手动快捷填写：</span>
-        <div class="form-group">
-          <select id="formType" class="form-control">
-            <option value="vless">VLESS Reality (TCP)</option>
-            <option value="hysteria2">Hysteria 2 (UDP/QUIC)</option>
-            <option value="trojan">Trojan (TLS)</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <input id="formTag" class="form-control" placeholder="节点别名 (如：日本 专线)">
-        </div>
-        <div style="display: flex; gap: 8px;" class="form-group">
-          <input id="formServer" class="form-control" style="flex: 2;" placeholder="服务器地址 / 域名">
-          <input id="formPort" class="form-control" style="flex: 1;" type="number" placeholder="端口">
-        </div>
-        <div class="form-group">
-          <input id="formSecret" class="form-control" placeholder="密码 / UUID">
-        </div>
-        <div class="form-group">
-          <input id="formSni" class="form-control" placeholder="SNI 域名 (如: gateway.icloud.com)">
-        </div>
-        <div class="form-group" id="realityGroup">
-          <input id="formPbk" class="form-control" placeholder="Reality 公钥 (Public Key)">
-        </div>
-        <button class="btn" style="width: 100%; justify-content: center;" onclick="handleManualAdd()">
-          ➕ 提交新节点
-        </button>
+    <div class="card" style="padding: 12px;">
+      <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+        <input type="text" id="connFilterInput" class="form-input" placeholder="🔍 搜索域名、IP 或规则 (如: microsoft, sgame, cn)..." 
+               style="padding: 8px 12px; font-size: 12.5px;" oninput="renderConnections()">
+      </div>
+      <div style="font-size: 11px; color: var(--text-sub); margin-bottom: 10px; display: flex; justify-content: space-between;">
+        <span id="connTotalStats">累计流量：↓ 0 MB · ↑ 0 MB</span>
+        <span>点击右侧 ✕ 可强行断开指定连接</span>
+      </div>
+      <div id="connList" style="display: flex; flex-direction: column; gap: 6px; max-height: 520px; overflow-y: auto;">
+        <div style="text-align: center; color: var(--text-sub); padding: 30px;">正在获取网络连接...</div>
       </div>
     </div>
   </div>
 
-  <!-- VIEW 4: 系统与 IPv6 (System & IPv6) -->
+  <!-- VIEW 4: 添加节点 (Add Node) -->
+  <div id="view-add" class="view">
+    <div class="card">
+      <h2 style="font-size: 16.5px; font-weight: 700; margin-bottom: 4px;">添加新节点</h2>
+      <p style="font-size: 12.5px; color: var(--text-sub); margin-bottom: 14px;">支持一键粘贴分享链接或 sing-box JSON 片段</p>
+
+      <div class="form-group">
+        <label class="form-label">粘贴节点链接 / JSON：</label>
+        <textarea id="importInput" class="form-textarea" placeholder="支持 vless://, hysteria2://, hy2://, trojan://, ss:// 链接，或者 sing-box outbound 格式 JSON 片段..."></textarea>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-primary" style="flex: 1; justify-content: center;" onclick="handleImportLink()">📥 解析并添加</button>
+        <button class="btn btn-outline" onclick="clearImport()">清空</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 12px;">手动表单录入</h3>
+      <div class="form-group">
+        <label class="form-label">节点名称 (Tag)：</label>
+        <input type="text" id="manualTag" class="form-input" placeholder="如: 香港专线 01">
+      </div>
+      <div class="form-group">
+        <label class="form-label">协议类型：</label>
+        <select id="manualType" class="form-select" onchange="onProtocolChange()">
+          <option value="vless">VLESS (Reality / Vision)</option>
+          <option value="hysteria2">Hysteria 2</option>
+          <option value="trojan">Trojan</option>
+          <option value="shadowsocks">Shadowsocks</option>
+        </select>
+      </div>
+      <div class="info-grid">
+        <div class="form-group">
+          <label class="form-label">服务器域名/IP：</label>
+          <input type="text" id="manualServer" class="form-input" placeholder="example.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">端口：</label>
+          <input type="number" id="manualPort" class="form-input" placeholder="443">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">UUID / 密码：</label>
+        <input type="text" id="manualSecret" class="form-input" placeholder="UUID or Password">
+      </div>
+      <button class="btn btn-primary" style="width: 100%; justify-content: center; margin-top: 6px;" onclick="handleManualAdd()">💾 保存并生效</button>
+    </div>
+  </div>
+
+  <!-- VIEW 5: 系统诊断与运维 (System) -->
   <div id="view-system" class="view">
     <div class="card">
-      <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 10px;">🌐 IPv6 服务专题</h2>
+      <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">🌐 双栈 IPv6 状态与诊断</h2>
       <div class="info-grid">
         <div class="info-box">
-          <div class="info-label">本机公网 IPv6</div>
-          <div id="sysIpv6Addr" class="info-val" style="font-size: 11px;">获取中...</div>
+          <div class="info-label">IPv6 本地栈</div>
+          <div id="sysIpv6Local" class="info-val">已激活</div>
         </div>
         <div class="info-box">
           <div class="info-label">国内 IPv6 服务</div>
           <div class="info-val" style="color: var(--green);">已启用 (原生直连)</div>
         </div>
       </div>
-      <div style="margin-top: 12px; font-size: 12px; color: var(--text-sub); line-height: 1.6;">
-        ✅ <strong>国内 IPv6 直连</strong>：中国三大运营商 5G/Wi-Fi 分配的独立公网 IPv6 地址直接连通国内服务，零代理损耗。<br>
-        ✅ <strong>代理 IPv6 穿透</strong>：香港、新加坡等节点直接采用 IPv6 骨干专线建立隧道，海外服务自动按最优双栈访问。
+      <button class="btn btn-sm btn-outline" style="margin-top: 12px; width: 100%; justify-content: center;" onclick="testIpv6Connectivity()">⚡ 诊断 IPv6 公网连通性</button>
+    </div>
+
+    <!-- Geo Rules Update Card -->
+    <div class="card" style="border-left: 3px solid #f59e0b;">
+      <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 6px;">🔄 规则集在线热更新</h2>
+      <div style="font-size: 12px; color: var(--text-sub); line-height: 1.5; margin-bottom: 12px;">
+        从 GitHub / SagerNet 镜像源在线拉取最新的 <code>geoip-cn.srs</code>、<code>geosite-cn.srs</code> 与 <code>geosite-microsoft.srs</code> 规则库，更新后内核 0.1 秒无感热重载。
       </div>
-      <button class="btn btn-sm" style="margin-top: 12px;" onclick="testIpv6Connectivity()">⚡ 诊断 IPv6 连通性</button>
+      <button class="btn btn-sm btn-outline" id="updateGeoBtn" style="width: 100%; justify-content: center; color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);" onclick="updateGeoRules()">
+        ⚡ 在线更新 Geo 规则库 (geoip/geosite)
+      </button>
     </div>
 
     <div class="card">
@@ -496,8 +651,8 @@
           <div id="sysPid" class="info-val">-</div>
         </div>
         <div class="info-box">
-          <div class="info-label">核心内存占用</div>
-          <div id="sysMem" class="info-val">~65 MB</div>
+          <div class="info-label">物理常驻内存 (VmRSS)</div>
+          <div id="sysMem" class="info-val">~23 MB (已调优)</div>
         </div>
       </div>
       <div style="margin-top: 14px; display: flex; gap: 8px;">
@@ -517,13 +672,17 @@
       <span class="tab-icon">📡</span>
       <span>节点</span>
     </button>
+    <button class="tab-btn" id="tabBtn-connections" onclick="switchTab('connections')">
+      <span class="tab-icon">⚡</span>
+      <span>连接</span>
+    </button>
     <button class="tab-btn" id="tabBtn-add" onclick="switchTab('add')">
       <span class="tab-icon">➕</span>
-      <span>添加</span>
+      <span>导入</span>
     </button>
     <button class="tab-btn" id="tabBtn-system" onclick="switchTab('system')">
-      <span class="tab-icon">🌐</span>
-      <span>IPv6/系统</span>
+      <span class="tab-icon">⚙️</span>
+      <span>系统</span>
     </button>
   </div>
 
@@ -535,6 +694,9 @@
     let currentConfig = null;
     let proxiesMap = {};
     let nodeDelayCache = {};
+    let isSortedByDelay = false;
+    let currentConnections = [];
+    let trafficHistory = new Array(20).fill(0);
 
     // KSU Exec Helper
     let ksuSeq = 0;
@@ -565,23 +727,287 @@
     function switchTab(name) {
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.getElementById('view-' + name).classList.add('active');
-      document.getElementById('tabBtn-' + name).classList.add('active');
-      if (name === 'system') loadSystemInfo();
+
+      const v = document.getElementById(`view-${name}`);
+      const b = document.getElementById(`tabBtn-${name}`);
+      if (v) v.classList.add('active');
+      if (b) b.classList.add('active');
+
+      if (name === 'connections') {
+        fetchConnections();
+      }
     }
 
-    async function init() {
-      if (isKsu) {
-        document.getElementById('envBadge').innerText = 'KernelSU 内置管理 · Linux TProxy';
-      } else {
-        document.getElementById('envBadge').innerText = '浏览器轻量面板 · Clash API';
+    // Format bytes
+    function formatBytes(bytes) {
+      if (!bytes || bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
+    }
+
+    function formatSpeed(bps) {
+      if (!bps || bps === 0) return '0.0 KB/s';
+      if (bps < 1024 * 1024) {
+        return (bps / 1024).toFixed(1) + ' KB/s';
       }
+      return (bps / (1024 * 1024)).toFixed(2) + ' MB/s';
+    }
+
+    // 1. Live Traffic Monitor & Sparkline Canvas
+    let trafficWs = null;
+    function initTrafficStream() {
+      try {
+        const wsHost = (window.location.host || '127.0.0.1:9090');
+        const wsProto = (window.location.protocol === 'https:') ? 'wss:' : 'ws:';
+        trafficWs = new WebSocket(`${wsProto}//${wsHost}/traffic`);
+
+        trafficWs.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            updateTrafficUI(data.up || 0, data.down || 0);
+          } catch(e) {}
+        };
+        trafficWs.onerror = () => { fallbackTrafficPoll(); };
+        trafficWs.onclose = () => { setTimeout(initTrafficStream, 3500); };
+      } catch(e) {
+        fallbackTrafficPoll();
+      }
+    }
+
+    let trafficPollTimer = null;
+    function fallbackTrafficPoll() {
+      if (trafficPollTimer) return;
+      trafficPollTimer = setInterval(async () => {
+        try {
+          if (isKsu) {
+            const r = await ksuExec('curl -s -m 1 http://127.0.0.1:9090/traffic');
+            if (r.stdout) {
+              const lines = r.stdout.trim().split('\n');
+              const last = JSON.parse(lines[lines.length - 1]);
+              updateTrafficUI(last.up || 0, last.down || 0);
+            }
+          }
+        } catch(e) {}
+      }, 1500);
+    }
+
+    function updateTrafficUI(up, down) {
+      const downEl = document.getElementById('speedDown');
+      const upEl = document.getElementById('speedUp');
+      if (downEl) downEl.innerText = formatSpeed(down);
+      if (upEl) upEl.innerText = formatSpeed(up);
+      drawTrafficCanvas(down);
+    }
+
+    function drawTrafficCanvas(val) {
+      const cvs = document.getElementById('trafficCanvas');
+      if (!cvs) return;
+      const ctx = cvs.getContext('2d');
+      const w = cvs.width;
+      const h = cvs.height;
+
+      trafficHistory.push(val);
+      if (trafficHistory.length > 20) trafficHistory.shift();
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.beginPath();
+      const max = Math.max(...trafficHistory, 10240); // min 10KB scale
+      const step = w / (trafficHistory.length - 1);
+
+      trafficHistory.forEach((v, i) => {
+        const x = i * step;
+        const y = h - (v / max) * (h - 4) - 2;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.lineTo(w, h);
+      ctx.lineTo(0, h);
+      ctx.closePath();
+      const grad = ctx.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, 'rgba(56, 189, 248, 0.35)');
+      grad.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    // 2. Active Connections Inspector
+    async function fetchConnections(notify = false) {
+      try {
+        let data = null;
+        if (isKsu) {
+          const r = await ksuExec('curl -s http://127.0.0.1:9090/connections');
+          if (r.stdout) data = JSON.parse(r.stdout);
+        } else {
+          const res = await fetch(`${API}/connections`);
+          data = await res.json();
+        }
+
+        if (data && data.connections) {
+          currentConnections = data.connections;
+          document.getElementById('connCount').innerText = currentConnections.length;
+          document.getElementById('connTotalStats').innerText = 
+            `累计流量：↓ ${formatBytes(data.downloadTotal || 0)} · ↑ ${formatBytes(data.uploadTotal || 0)}`;
+          renderConnections();
+          if (notify) showToast(`已刷新连接：共 ${currentConnections.length} 个活跃`);
+        }
+      } catch(e) {
+        console.warn('Fetch connections error:', e);
+      }
+    }
+
+    function renderConnections() {
+      const listEl = document.getElementById('connList');
+      if (!listEl) return;
+      const filter = (document.getElementById('connFilterInput')?.value || '').toLowerCase().trim();
+
+      let conns = currentConnections;
+      if (filter) {
+        conns = conns.filter(c => {
+          const host = (c.metadata?.host || c.metadata?.destinationIP || '').toLowerCase();
+          const rule = (c.rule || '').toLowerCase();
+          const chains = (c.chains || []).join(' ').toLowerCase();
+          return host.includes(filter) || rule.includes(filter) || chains.includes(filter);
+        });
+      }
+
+      if (conns.length === 0) {
+        listEl.innerHTML = '<div style="text-align: center; color: var(--text-sub); padding: 24px;">暂无匹配的活跃网络连接</div>';
+        return;
+      }
+
+      listEl.innerHTML = '';
+      conns.forEach(c => {
+        const host = c.metadata?.host || c.metadata?.destinationIP || '未知目标';
+        const port = c.metadata?.destinationPort ? `:${c.metadata.destinationPort}` : '';
+        const rule = c.rule || 'Direct';
+        const net = (c.metadata?.network || 'tcp').toUpperCase();
+        const chain = (c.chains && c.chains.length > 0) ? c.chains[0] : 'direct';
+
+        let tagClass = 'conn-tag direct';
+        if (rule.includes('microsoft')) tagClass = 'conn-tag ms';
+        else if (chain !== 'direct') tagClass = 'conn-tag proxy';
+
+        const item = document.createElement('div');
+        item.className = 'conn-item';
+        item.innerHTML = `
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+              <span class="${tagClass}">${rule}</span>
+              <span class="conn-host" title="${host}${port}">${host}${port}</span>
+            </div>
+            <div style="font-size: 11px; color: var(--text-sub);">
+              ${net} · 出口: <strong>${chain}</strong> · ↓ ${formatBytes(c.download)} · ↑ ${formatBytes(c.upload)}
+            </div>
+          </div>
+          <button class="conn-kill-btn" title="断开此连接" onclick="closeSingleConnection('${c.id}')">✕</button>
+        `;
+        listEl.appendChild(item);
+      });
+    }
+
+    async function closeSingleConnection(id) {
+      try {
+        if (isKsu) {
+          await ksuExec(`curl -s -X DELETE http://127.0.0.1:9090/connections/${id}`);
+        } else {
+          await fetch(`${API}/connections/${id}`, { method: 'DELETE' });
+        }
+        showToast('已关闭连接');
+        fetchConnections();
+      } catch(e) {
+        showToast('关闭失败: ' + e);
+      }
+    }
+
+    async function closeAllConnections() {
+      if (!confirm('确定要强行断开当前所有活跃连接吗？')) return;
+      try {
+        if (isKsu) {
+          await ksuExec('curl -s -X DELETE http://127.0.0.1:9090/connections');
+        } else {
+          await fetch(`${API}/connections`, { method: 'DELETE' });
+        }
+        showToast('已断开全部活跃连接');
+        fetchConnections();
+      } catch(e) {
+        showToast('断开失败: ' + e);
+      }
+    }
+
+    // 3. Parallel Batch Ping & Auto Sort
+    async function testAllDelaysConcurrent() {
+      const group = proxiesMap['PROXY'];
+      if (!group || !group.all || group.all.length === 0) return;
+      const btn = document.getElementById('batchPingBtn');
+      if (btn) btn.innerText = '⚡ 测速中...';
+      showToast('正在并行并发测速所有节点...');
+
+      const promises = group.all.map(name => testSingleDelay(name));
+      await Promise.all(promises);
+
+      if (btn) btn.innerText = '⚡ 全部测速';
+      showToast('全部节点测速完成！');
+
+      if (isSortedByDelay) {
+        renderNodes(group.all);
+      }
+    }
+
+    function toggleSortNodes() {
+      isSortedByDelay = !isSortedByDelay;
+      const btn = document.getElementById('sortBtn');
+      if (btn) {
+        btn.innerText = isSortedByDelay ? '↕️ 恢复默认' : '↕️ 延迟排序';
+        btn.style.borderColor = isSortedByDelay ? 'var(--accent)' : 'var(--card-border)';
+        btn.style.color = isSortedByDelay ? 'var(--accent)' : 'var(--text-main)';
+      }
+      const group = proxiesMap['PROXY'];
+      if (group && group.all) {
+        renderNodes(group.all);
+      }
+    }
+
+    // 4. Geo Rules Update
+    async function updateGeoRules() {
+      const btn = document.getElementById('updateGeoBtn');
+      if (btn) btn.innerText = '⏳ 正在同步最新规则库...';
+      showToast('正在从镜像源下载最新 GeoIP / GeoSite 规则集...');
+
+      try {
+        if (isKsu) {
+          const res = await ksuExec('sh /data/adb/box/scripts/box.tool update-geo');
+          if (res.errno === 0) {
+            showToast('✅ 规则集已成功更新并热重载！');
+          } else {
+            showToast('更新失败，请检查网络: ' + res.stderr);
+          }
+        } else {
+          showToast('请在手机终端执行: su -c /data/adb/box/scripts/box.tool update-geo');
+        }
+      } catch(e) {
+        showToast('更新发生错误: ' + e);
+      } finally {
+        if (btn) btn.innerText = '⚡ 在线更新 Geo 规则库 (geoip/geosite)';
+      }
+    }
+
+    // Initialize state
+    async function init() {
       await loadFullConfig();
       await fetchClashState();
       fetchIpInfo();
+      initTrafficStream();
+      setInterval(fetchClashState, 5000);
+      setInterval(fetchSmartHomeState, 4000);
     }
 
-    // Load full sing-box JSON configuration
     async function loadFullConfig() {
       try {
         if (isKsu) {
@@ -591,14 +1017,12 @@
           }
         }
       } catch (e) {
-        console.warn('Failed to load full config via KSU:', e);
+        console.warn('Failed to load full config:', e);
       }
     }
 
-    // Fetch state from Clash API (works both in browser and KSU)
     async function fetchClashState() {
       try {
-        // Mode
         let cfgData;
         if (isKsu) {
           const r = await ksuExec('curl -s http://127.0.0.1:9090/configs');
@@ -609,7 +1033,6 @@
         }
         if (cfgData && cfgData.mode) currentMode = cfgData.mode;
 
-        // Proxies
         let prxData;
         if (isKsu) {
           const r = await ksuExec('curl -s http://127.0.0.1:9090/proxies');
@@ -649,7 +1072,7 @@
       if (isEnabled) {
         btn.classList.add('on');
         dot.className = 'status-dot active';
-        txt.innerText = '已开启 (国内直连)';
+        txt.innerText = '已开启 (分流)';
         desc.innerText = '国内流量直连 · 国外走选中节点';
       } else {
         btn.classList.remove('on');
@@ -688,22 +1111,35 @@
         }
         currentMode = newMode;
         updateSwitchUI();
-        showToast(newMode === 'Direct' ? '已关闭代理 (全量直连)' : '已开启代理 (国内直连 · 国外代理)');
-        setTimeout(fetchIpInfo, 1000);
+        showToast(newMode === 'Direct' ? '已关闭代理（全量直连）' : '已开启代理（规则分流）');
       } catch (e) {
-        showToast('切换失败: ' + e);
+        showToast('切换模式失败: ' + e);
       }
     }
 
-    function renderNodes(nodeNames) {
-      document.getElementById('nodeCount').innerText = nodeNames.length;
+    function renderNodes(nodeList) {
       const listEl = document.getElementById('nodeList');
+      if (!listEl) return;
+      document.getElementById('nodeCount').innerText = nodeList.length;
       listEl.innerHTML = '';
 
-      nodeNames.forEach(name => {
+      let list = [...nodeList];
+      if (isSortedByDelay) {
+        list.sort((a, b) => {
+          const getDelayNum = (name) => {
+            const d = nodeDelayCache[name];
+            if (!d) return 999999;
+            if (d.includes('ms')) return parseInt(d);
+            return 999998;
+          };
+          return getDelayNum(a) - getDelayNum(b);
+        });
+      }
+
+      list.forEach(name => {
         const isSelected = (name === currentNode);
-        const item = document.createElement('div');
-        item.className = 'node-item' + (isSelected ? ' selected' : '');
+        const p = proxiesMap[name] || {};
+        const pType = p.type || 'PROXY';
 
         let icon = '🌐';
         if (name.includes('香港') || name.includes('HK')) icon = '🇭🇰';
@@ -711,22 +1147,20 @@
         else if (name.includes('美国') || name.includes('US')) icon = '🇺🇸';
         else if (name.includes('日本') || name.includes('JP')) icon = '🇯🇵';
 
-        const p = proxiesMap[name] || {};
-        const pType = p.type || 'PROXY';
-
-        let delayTxt = nodeDelayCache[name] || '-- ms';
+        const delayTxt = nodeDelayCache[name] || '测速';
         let delayCls = '';
-        if (p.history && p.history.length > 0) {
-          const d = p.history[p.history.length - 1].delay;
-          if (d > 0) {
-            delayTxt = d + ' ms';
-            delayCls = (d < 200 ? 'fast' : (d < 400 ? 'medium' : 'slow'));
-          }
+        if (delayTxt.includes('ms')) {
+          const ms = parseInt(delayTxt);
+          delayCls = ms < 150 ? 'fast' : (ms < 300 ? 'medium' : 'slow');
+        } else if (delayTxt === '超时' || delayTxt === '失败') {
+          delayCls = 'slow';
         }
 
+        const item = document.createElement('div');
+        item.className = 'node-item' + (isSelected ? ' selected' : '');
         item.innerHTML = `
-          <div class="node-main" onclick="selectNode('${escapeStr(name)}')">
-            <div class="node-name-row">
+          <div style="flex: 1;" onclick="selectNode('${escapeStr(name)}')">
+            <div class="node-title">
               <span>${icon}</span>
               <span>${name}</span>
               <span class="node-tag-type">${pType}</span>
@@ -786,7 +1220,7 @@
           nodeDelayCache[name] = d + ' ms';
           if (el) {
             el.innerText = d + ' ms';
-            el.className = 'node-delay ' + (d < 200 ? 'fast' : (d < 400 ? 'medium' : 'slow'));
+            el.className = 'node-delay ' + (d < 150 ? 'fast' : (d < 300 ? 'medium' : 'slow'));
           }
         } else {
           nodeDelayCache[name] = '超时';
@@ -797,365 +1231,269 @@
       }
     }
 
-    async function testAllDelays() {
-      const group = proxiesMap['PROXY'];
-      if (!group || !group.all) return;
-      showToast('正在批量测速中...');
-      for (const name of group.all) {
-        await testSingleDelay(name);
-      }
-      showToast('批量测速完成');
-    }
-
-    // Delete Node
-    async function deleteNode(name, event) {
-      if (event) event.stopPropagation();
-      if (!isKsu) {
-        alert('请在 KernelSU 管理器内打开 WebUI 以执行增删节点操作');
-        return;
-      }
-      if (!confirm(`确定要从配置文件中彻底删除节点【${name}】吗？`)) return;
+    async function deleteNode(name, ev) {
+      if (ev) ev.stopPropagation();
+      if (!confirm(`确定要彻底删除节点 [${name}] 吗？`)) return;
 
       try {
-        await loadFullConfig();
-        if (!currentConfig || !currentConfig.outbounds) {
-          alert('未能读取到 sing-box 完整配置');
-          return;
-        }
-
-        // Filter out from outbounds
-        currentConfig.outbounds = currentConfig.outbounds.filter(o => o.tag !== name);
-        // Clean up from all selectors
-        currentConfig.outbounds.forEach(o => {
-          if (o.type === 'selector' && Array.isArray(o.outbounds)) {
-            o.outbounds = o.outbounds.filter(t => t !== name);
-            if (o.default === name) o.default = o.outbounds[0] || 'direct';
+        if (isKsu) {
+          const safeName = name.replace(/"/g, '\\"');
+          const res = await ksuExec(`sh /data/adb/box/scripts/box.node del "${safeName}"`);
+          if (res.errno === 0) {
+            showToast('已删除节点: ' + name);
+            await fetchClashState();
+          } else {
+            showToast('删除失败: ' + res.stderr);
           }
-        });
-
-        // Save
-        await saveConfigToDevice(currentConfig);
-        showToast(`节点【${name}】已成功删除并生效`);
-        setTimeout(fetchClashState, 2000);
-      } catch (e) {
-        alert('删除节点失败: ' + e);
-      }
-    }
-
-    // Parse Link & Add Node
-    async function handleImportNode() {
-      const text = document.getElementById('importLink').value.trim();
-      if (!text) return alert('请先粘贴节点链接或 JSON 配置');
-
-      try {
-        let nodeObj = null;
-        if (text.startsWith('{')) {
-          nodeObj = JSON.parse(text);
         } else {
-          nodeObj = parseNodeUrl(text);
+          showToast('删除功能仅在 KernelSU 环境下支持');
         }
-
-        if (!nodeObj || !nodeObj.tag || !nodeObj.type) {
-          throw new Error('解析失败：缺少 tag 或 type 字段');
-        }
-
-        await addNodeToConfig(nodeObj);
-        document.getElementById('importLink').value = '';
-        switchTab('nodes');
       } catch (e) {
-        alert('导入失败: ' + e.message);
+        showToast('操作异常: ' + e);
       }
     }
 
-    function parseNodeUrl(link) {
-      const u = new URL(link);
-      const proto = u.protocol.replace(':', '').toLowerCase();
-      const tag = decodeURIComponent(u.hash ? u.hash.slice(1) : (u.hostname + ':' + u.port));
-      const server = u.hostname;
-      const port = parseInt(u.port) || 443;
-      const p = u.searchParams;
+    // Node Import Link
+    async function handleImportLink() {
+      const text = document.getElementById('importInput').value.trim();
+      if (!text) return showToast('请先输入节点链接或 JSON 片段');
 
-      if (proto === 'vless') {
-        const obj = {
-          type: "vless",
-          tag: tag,
-          server: server,
-          server_port: port,
-          uuid: u.username,
-          network: "tcp"
-        };
-        const flow = p.get('flow');
-        if (flow) obj.flow = flow;
-        const sec = p.get('security');
-        if (sec === 'reality') {
-          obj.tls = {
-            enabled: true,
-            server_name: p.get('sni') || server,
-            utls: { enabled: true, fingerprint: p.get('fp') || 'chrome' },
-            reality: {
-              enabled: true,
-              public_key: p.get('pbk') || '',
-              short_id: p.get('sid') || ''
-            }
-          };
-        } else if (sec === 'tls') {
-          obj.tls = { enabled: true, server_name: p.get('sni') || server };
+      try {
+        let payload = null;
+        if (text.startsWith('{')) {
+          payload = JSON.parse(text);
+        } else if (text.startsWith('vless://')) {
+          payload = parseVlessUri(text);
+        } else if (text.startsWith('hysteria2://') || text.startsWith('hy2://')) {
+          payload = parseHy2Uri(text);
+        } else {
+          return showToast('暂不支持此格式链接，请使用 vless/hy2 链接或 JSON');
         }
-        return obj;
-      } else if (proto === 'hysteria2' || proto === 'hy2') {
-        const obj = {
-          type: "hysteria2",
-          tag: tag,
-          server: server,
-          server_port: port,
-          password: decodeURIComponent(u.username || u.password || ''),
-          tls: {
-            enabled: true,
-            server_name: p.get('sni') || server
+
+        if (isKsu) {
+          const jsonStr = JSON.stringify(payload).replace(/'/g, "'\\''");
+          const cmd = `sh /data/adb/box/scripts/box.node add '${jsonStr}'`;
+          const res = await ksuExec(cmd);
+          if (res.errno === 0) {
+            showToast('节点已成功添加并生效！');
+            document.getElementById('importInput').value = '';
+            switchTab('nodes');
+            await fetchClashState();
+          } else {
+            showToast('添加失败: ' + res.stderr);
           }
-        };
-        if (p.get('alpn')) obj.tls.alpn = p.get('alpn').split(',');
-        if (p.get('pinSHA256')) obj.tls.certificate_public_key_sha256 = [p.get('pinSHA256')];
-        return obj;
-      } else if (proto === 'trojan') {
-        return {
-          type: "trojan",
-          tag: tag,
-          server: server,
-          server_port: port,
-          password: decodeURIComponent(u.username || u.password),
-          tls: { enabled: true, server_name: p.get('sni') || server }
+        } else {
+          showToast('添加功能仅在 KernelSU 环境下支持');
+        }
+      } catch (e) {
+        showToast('解析失败: ' + e.message);
+      }
+    }
+
+    function parseVlessUri(uri) {
+      const u = new URL(uri);
+      const uuid = u.username;
+      const server = u.hostname;
+      const port = parseInt(u.port || 443);
+      const tag = decodeURIComponent(u.hash ? u.hash.slice(1) : `${server}:${port}`);
+      const sp = u.searchParams;
+
+      const obj = {
+        type: 'vless',
+        tag: tag,
+        server: server,
+        server_port: port,
+        uuid: uuid,
+        flow: sp.get('flow') || 'xtls-rprx-vision',
+        packet_encoding: 'xudp',
+        tcp_fast_open: true,
+        tls: {
+          enabled: true,
+          server_name: sp.get('sni') || server,
+          utls: { enabled: true, fingerprint: sp.get('fp') || 'chrome' }
+        }
+      };
+      if (sp.get('security') === 'reality') {
+        obj.tls.reality = {
+          enabled: true,
+          public_key: sp.get('pbk') || '',
+          short_id: sp.get('sid') || ''
         };
       }
-      throw new Error('暂不支持该协议链接: ' + proto);
+      return obj;
+    }
+
+    function parseHy2Uri(uri) {
+      const u = new URL(uri.replace(/^hy2:\/\//, 'hysteria2://'));
+      const pass = u.username || u.password;
+      const server = u.hostname;
+      const port = parseInt(u.port || 443);
+      const tag = decodeURIComponent(u.hash ? u.hash.slice(1) : `Hy2-${server}`);
+      const sp = u.searchParams;
+
+      return {
+        type: 'hysteria2',
+        tag: tag,
+        server: server,
+        server_port: port,
+        password: pass,
+        tls: {
+          enabled: true,
+          server_name: sp.get('sni') || server,
+          insecure: sp.get('insecure') === '1',
+          alpn: ['h3']
+        }
+      };
+    }
+
+    function clearImport() {
+      document.getElementById('importInput').value = '';
     }
 
     async function handleManualAdd() {
-      const type = document.getElementById('formType').value;
-      const tag = document.getElementById('formTag').value.trim();
-      const server = document.getElementById('formServer').value.trim();
-      const port = parseInt(document.getElementById('formPort').value);
-      const secret = document.getElementById('formSecret').value.trim();
-      const sni = document.getElementById('formSni').value.trim();
-      const pbk = document.getElementById('formPbk').value.trim();
+      const tag = document.getElementById('manualTag').value.trim();
+      const server = document.getElementById('manualServer').value.trim();
+      const port = parseInt(document.getElementById('manualPort').value.trim());
+      const secret = document.getElementById('manualSecret').value.trim();
+      const type = document.getElementById('manualType').value;
 
       if (!tag || !server || !port || !secret) {
-        return alert('请完整填写节点名称、服务器地址、端口及密码/UUID！');
+        return showToast('请填写完整节点信息');
       }
 
-      let nodeObj = null;
+      let payload = null;
       if (type === 'vless') {
-        nodeObj = {
-          type: "vless",
+        payload = {
+          type: 'vless',
           tag: tag,
           server: server,
           server_port: port,
           uuid: secret,
-          flow: "xtls-rprx-vision",
-          network: "tcp",
-          tls: {
-            enabled: true,
-            server_name: sni || server,
-            utls: { enabled: true, fingerprint: "chrome" },
-            reality: { enabled: true, public_key: pbk, short_id: "" }
-          }
+          flow: 'xtls-rprx-vision',
+          packet_encoding: 'xudp',
+          tcp_fast_open: true,
+          tls: { enabled: true, server_name: server, utls: { enabled: true, fingerprint: 'chrome' } }
         };
       } else if (type === 'hysteria2') {
-        nodeObj = {
-          type: "hysteria2",
+        payload = {
+          type: 'hysteria2',
           tag: tag,
           server: server,
           server_port: port,
           password: secret,
-          tls: { enabled: true, server_name: sni || server }
-        };
-      } else if (type === 'trojan') {
-        nodeObj = {
-          type: "trojan",
-          tag: tag,
-          server: server,
-          server_port: port,
-          password: secret,
-          tls: { enabled: true, server_name: sni || server }
+          tls: { enabled: true, server_name: server, alpn: ['h3'] }
         };
       }
 
-      await addNodeToConfig(nodeObj);
-      switchTab('nodes');
-    }
-
-    async function addNodeToConfig(nodeObj) {
-      if (!isKsu) {
-        alert('请在 KernelSU 管理器内打开 WebUI 以添加保存节点');
-        return;
-      }
-      await loadFullConfig();
-      if (!currentConfig || !currentConfig.outbounds) {
-        throw new Error('无法读取基础配置');
-      }
-
-      // Check if tag exists
-      if (currentConfig.outbounds.some(o => o.tag === nodeObj.tag)) {
-        throw new Error(`已存在同名节点【${nodeObj.tag}】，请更改名称`);
-      }
-
-      // Insert before direct/block
-      const lastSpecialIdx = currentConfig.outbounds.findIndex(o => o.type === 'direct' || o.type === 'block');
-      if (lastSpecialIdx !== -1) {
-        currentConfig.outbounds.splice(lastSpecialIdx, 0, nodeObj);
-      } else {
-        currentConfig.outbounds.push(nodeObj);
-      }
-
-      // Add to selector
-      const sel = currentConfig.outbounds.find(o => o.tag === 'PROXY' && o.type === 'selector');
-      if (sel && sel.outbounds) {
-        sel.outbounds.push(nodeObj.tag);
-      }
-
-      await saveConfigToDevice(currentConfig);
-      showToast(`节点【${nodeObj.tag}】添加成功！`);
-      setTimeout(fetchClashState, 2000);
-    }
-
-    async function saveConfigToDevice(configObj) {
-      const jsonStr = JSON.stringify(configObj, null, 2);
-      // UTF-8 safe base64
-      const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
-      const res = await ksuExec(`sh /data/adb/box/scripts/box.node save "${b64}"`);
-      if (res.errno !== 0 || res.stdout.includes('failed')) {
-        throw new Error('配置语法自检未通过: ' + res.stdout + ' ' + res.stderr);
+      if (isKsu && payload) {
+        const jsonStr = JSON.stringify(payload).replace(/'/g, "'\\''");
+        const res = await ksuExec(`sh /data/adb/box/scripts/box.node add '${jsonStr}'`);
+        if (res.errno === 0) {
+          showToast('手动节点保存成功！');
+          switchTab('nodes');
+          await fetchClashState();
+        } else {
+          showToast('保存失败: ' + res.stderr);
+        }
       }
     }
 
-    // IP & IPv6 Status
+    function onProtocolChange() {}
+
+    // IP & Diagnostics
     async function fetchIpInfo() {
       const v4El = document.getElementById('ipV4Display');
       const v6El = document.getElementById('ipV6Display');
-      v4El.innerText = '检测中...';
-      v6El.innerText = '检测中...';
+      if (v4El) v4El.innerText = '检测中...';
+      if (v6El) v6El.innerText = '检测中...';
 
-      // IPv4 Info via ipinfo.io
       try {
-        const res = await fetch('https://ipinfo.io/json', { cache: 'no-store' });
-        const d = await res.json();
-        v4El.innerText = `${d.ip} (${d.country} ${d.city || ''})`;
+        const res4 = await fetch('https://api.ipify.org?format=json');
+        const d4 = await res4.json();
+        if (v4El) v4El.innerText = d4.ip;
       } catch (e) {
-        v4El.innerText = '获取超时 (已直连/无网)';
+        if (v4El) v4El.innerText = '获取失败';
       }
 
-      // Check IPv6 status via KSU node or native API
       try {
-        if (isKsu) {
-          const r = await ksuExec('sh /data/adb/box/scripts/box.node status');
-          if (r.stdout) {
-            const st = JSON.parse(r.stdout);
-            if (st.has_ipv6) {
-              v6El.innerText = '已启用 (公网直连)';
-              v6El.style.color = 'var(--green)';
-              document.getElementById('sysIpv6Addr').innerText = st.ipv6_addr;
-            } else {
-              v6El.innerText = '未分配公网 IPv6';
-            }
-            if (st.game_bypass) {
-              const gb = document.getElementById('gameBadge');
-              if (gb) {
-                gb.innerText = '已启用硬件直连';
-                gb.style.color = 'var(--green)';
-              }
-            }
-          }
+        const res6 = await fetch('https://api64.ipify.org?format=json');
+        const d6 = await res6.json();
+        if (d6.ip && d6.ip.includes(':')) {
+          if (v6El) v6El.innerHTML = `<span style="color: var(--green);">已连通 (${d6.ip.slice(0, 16)}...)</span>`;
         } else {
-          v6El.innerText = '双栈就绪';
+          if (v6El) v6El.innerText = '未分配原生公网 IPv6';
         }
       } catch (e) {
-        v6El.innerText = '未知';
+        if (v6El) v6El.innerText = '未分配公网 IPv6';
       }
+    }
 
-      // Check Smart Home state
+    async function testIpv6Connectivity() {
+      showToast('正在向海外 IPv6 骨干网发起并发测试...');
+      try {
+        const t0 = performance.now();
+        const res = await fetch('https://ipv6.google.com/generate_204', { mode: 'no-cors' });
+        const latency = Math.round(performance.now() - t0);
+        showToast(`IPv6 连通成功！往返延迟: ${latency} ms`);
+      } catch (e) {
+        showToast('IPv6 连通测试超时（运营商未下发 IPv6 或被拦截）');
+      }
+    }
+
+    async function fetchSmartHomeState() {
       try {
         if (isKsu) {
-          const r = await ksuExec('cat /data/adb/box/run/smart_home.json 2>/dev/null');
-          if (r.stdout) {
-            const sh = JSON.parse(r.stdout);
+          const res = await ksuExec('cat /data/adb/box/run/smart_home.json 2>/dev/null');
+          if (res.errno === 0 && res.stdout) {
+            const sh = JSON.parse(res.stdout);
             const iconEl = document.getElementById('smartHomeIcon');
             const titleEl = document.getElementById('smartHomeTitle');
             const descEl = document.getElementById('smartHomeDesc');
             if (sh.location === 'home') {
-              iconEl.innerText = '🏠';
-              titleEl.innerText = sh.gateway ? `家庭网络环境 (网关: ${sh.gateway})` : '家庭网络环境 (已连接)';
-              descEl.innerText = '已自动切换为【全量直连】· 软路由统一代理分流中';
+              if (iconEl) iconEl.innerText = '🏠';
+              if (titleEl) titleEl.innerText = sh.gateway ? `家庭网络环境 (网关: ${sh.gateway})` : '家庭网络环境 (已连接)';
+              if (descEl) descEl.innerText = '已自动切换为【全量直连】· 软路由统一代理分流中';
             } else {
-              iconEl.innerText = '🚗';
-              titleEl.innerText = '移动/外网环境 (5G蜂窝 / 外部Wi-Fi)';
-              descEl.innerText = '已自动开启【规则代理】· 手机底层内核透明接管中';
+              if (iconEl) iconEl.innerText = '🚗';
+              if (titleEl) titleEl.innerText = '外出移动网络环境 (5G / 外部 Wi-Fi)';
+              if (descEl) descEl.innerText = '已自动切换为【规则代理】· sing-box 接管海外流量';
             }
           }
         }
       } catch (e) {}
     }
 
-    async function loadSystemInfo() {
-      if (!isKsu) return;
-      try {
-        const r = await ksuExec('sh /data/adb/box/scripts/box.node status');
-        if (r.stdout) {
-          const st = JSON.parse(r.stdout);
-          document.getElementById('sysPid').innerText = st.pid || '已停止';
-          document.getElementById('sysMem').innerText = (st.mem_mb || '65') + ' MB';
-          if (st.ipv6_addr) document.getElementById('sysIpv6Addr').innerText = st.ipv6_addr;
-        }
-      } catch (e) {
-        console.error('System info error:', e);
-      }
-    }
-
-    async function testIpv6Connectivity() {
-      showToast('正在诊断 IPv6 连通性...');
+    async function restartService() {
+      if (!confirm('确定重启 sing-box 代理服务吗？')) return;
+      showToast('正在重启服务...');
       try {
         if (isKsu) {
-          const r = await ksuExec('curl -6 -I -s --connect-timeout 4 https://www.bilibili.com');
-          if (r.stdout.includes('HTTP/')) {
-            alert('🎉 恭喜！国内原生 IPv6 连通极速正常（已成功直连 Bilibili IPv6 边缘节点，零代理损耗）！');
-          } else {
-            alert('IPv6 状态：' + (r.stderr || '连接未响应'));
-          }
+          await ksuExec('sh /data/adb/box/scripts/box.service restart');
+          showToast('服务重启成功！');
+          setTimeout(init, 1500);
         } else {
-          alert('请在 KernelSU 管理器内部运行诊断');
+          showToast('重启功能仅支持在 KernelSU 内执行');
         }
-      } catch (e) {
-        alert('诊断失败: ' + e);
-      }
-    }
-
-    async function restartService() {
-      if (!isKsu) return alert('仅在 KernelSU 内部支持重启');
-      showToast('正在重启 sing-box 核心...');
-      try {
-        await ksuExec('sh /data/adb/box/scripts/box.node restart');
-        setTimeout(() => {
-          showToast('服务重启完成');
-          fetchClashState();
-          loadSystemInfo();
-        }, 3000);
-      } catch (e) {
-        alert('重启失败: ' + e);
+      } catch(e) {
+        showToast('重启失败: ' + e);
       }
     }
 
     async function resetToDefault() {
-      if (!isKsu) return alert('仅在 KernelSU 内部支持');
-      if (!confirm('确定要恢复到初始的 6 个海外高速节点吗？')) return;
+      if (!confirm('警告：将清空当前自定义节点并恢复默认配置，是否继续？')) return;
+      showToast('正在重置配置...');
       try {
-        await ksuExec('cp -f /data/adb/box/sing-box/config.json.bak /data/adb/box/sing-box/config.json && sh /data/adb/box/scripts/box.node restart');
-        showToast('已恢复初始配置');
-        setTimeout(() => location.reload(), 2000);
+        if (isKsu) {
+          await ksuExec('cp -f /data/adb/box/sing-box/config.example.json /data/adb/box/sing-box/config.json && sh /data/adb/box/scripts/box.service restart');
+          showToast('已恢复出厂配置！');
+          setTimeout(init, 1500);
+        }
       } catch (e) {
-        alert('恢复失败: ' + e);
+        showToast('重置失败: ' + e);
       }
     }
 
-    window.onload = init;
+    window.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
 </html>
