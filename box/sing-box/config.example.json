@@ -115,6 +115,13 @@
         "action": "hijack-dns"
       },
       {
+        "network": "udp",
+        "port": [
+          443
+        ],
+        "outbound": "block"
+      },
+      {
         "clash_mode": "Direct",
         "outbound": "direct"
       },

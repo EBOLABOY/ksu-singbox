@@ -4,8 +4,8 @@
 CONF_FILE="/data/adb/box/smart_home.conf"
 [ -f "$CONF_FILE" ] && . "$CONF_FILE"
 
-ROUTER_GW="${ROUTER_GW:-192.168.1.1}"
-HOME_SSID="${HOME_SSID:-MyHomeWiFi}"
+ROUTER_GW="${ROUTER_GW:-192.168.100.1}"
+HOME_SSID="${HOME_SSID:-195iot}"
 CLASH_API="http://127.0.0.1:9090"
 RUN_DIR="/data/adb/box/run"
 PID_FILE="${RUN_DIR}/smart_home.pid"
