@@ -49,6 +49,86 @@ case "$1" in
     echo "OK"
     ;;
 
+  add)
+    if [ -z "$2" ]; then
+      echo "Error: missing node JSON payload"
+      exit 1
+    fi
+    PAYLOAD="$2"
+    if ! echo "$PAYLOAD" | grep -q '^{'; then
+      PAYLOAD=$(echo "$PAYLOAD" | /data/adb/ksu/bin/busybox base64 -d 2>/dev/null)
+    fi
+    TAG=$(echo "$PAYLOAD" | grep -o '"tag"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n 1 | sed 's/.*:[[:space:]]*"//;s/"$//')
+    if [ -z "$TAG" ]; then
+      echo "Error: cannot parse tag from payload"
+      exit 1
+    fi
+    TMP_CONFIG="/data/adb/box/sing-box/config.json.tmp"
+    /data/adb/ksu/bin/busybox awk -v payload="$PAYLOAD" -v tag="$TAG" '
+      BEGIN { in_proxy=0; added_to_proxy=0; added_node=0 }
+      /"tag"[[:space:]]*:[[:space:]]*"PROXY"/ { in_proxy=1 }
+      in_proxy && /"outbounds"[[:space:]]*:[[:space:]]*\[/ {
+        print
+        print "        \"" tag "\","
+        added_to_proxy=1
+        next
+      }
+      in_proxy && /^[[:space:]]*\}/ { in_proxy=0 }
+      /"type"[[:space:]]*:[[:space:]]*"(direct|block)"/ && !added_node {
+        print "    " payload ","
+        added_node=1
+      }
+      { print }
+    ' "$CONFIG_PATH" > "$TMP_CONFIG"
+
+    CHECK_OUTPUT=$("$BIN_PATH" check -D /data/adb/box/sing-box -c "$TMP_CONFIG" 2>&1)
+    if [ $? -ne 0 ]; then
+      echo "Check failed: $CHECK_OUTPUT"
+      rm -f "$TMP_CONFIG"
+      exit 1
+    fi
+    cp -f "$CONFIG_PATH" "${CONFIG_PATH}.bak"
+    mv -f "$TMP_CONFIG" "$CONFIG_PATH"
+    chmod 644 "$CONFIG_PATH"
+    "$SERVICE_SCRIPT" restart >/dev/null 2>&1 &
+    echo "OK"
+    ;;
+
+  del)
+    if [ -z "$2" ]; then
+      echo "Error: missing node tag to delete"
+      exit 1
+    fi
+    TAG="$2"
+    TMP_CONFIG="/data/adb/box/sing-box/config.json.tmp"
+    /data/adb/ksu/bin/busybox awk -v tag="$TAG" '
+      BEGIN { skip=0 }
+      $0 ~ ("\"tag\"[[:space:]]*:[[:space:]]*\"" tag "\"") && !skip {
+        skip=1
+        next
+      }
+      skip && /^[[:space:]]*\},?[[:space:]]*$/ {
+        skip=0
+        next
+      }
+      skip { next }
+      $0 ~ ("\"" tag "\",?") { next }
+      { print }
+    ' "$CONFIG_PATH" > "$TMP_CONFIG"
+
+    CHECK_OUTPUT=$("$BIN_PATH" check -D /data/adb/box/sing-box -c "$TMP_CONFIG" 2>&1)
+    if [ $? -ne 0 ]; then
+      echo "Check failed: $CHECK_OUTPUT"
+      rm -f "$TMP_CONFIG"
+      exit 1
+    fi
+    cp -f "$CONFIG_PATH" "${CONFIG_PATH}.bak"
+    mv -f "$TMP_CONFIG" "$CONFIG_PATH"
+    chmod 644 "$CONFIG_PATH"
+    "$SERVICE_SCRIPT" restart >/dev/null 2>&1 &
+    echo "OK"
+    ;;
+
   status)
     PID=$(busybox pidof sing-box 2>/dev/null)
     IPV6_ADDR=$(ip -6 addr show scope global 2>/dev/null | awk '/inet6/ {print $2}' | head -n 1)

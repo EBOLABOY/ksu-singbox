@@ -1147,7 +1147,16 @@
         else if (name.includes('美国') || name.includes('US')) icon = '🇺🇸';
         else if (name.includes('日本') || name.includes('JP')) icon = '🇯🇵';
 
-        const delayTxt = nodeDelayCache[name] || '测速';
+        let delayTxt = nodeDelayCache[name];
+        if (!delayTxt && p.history && p.history.length > 0) {
+          const lastH = p.history[p.history.length - 1];
+          if (lastH && lastH.delay > 0) {
+            delayTxt = lastH.delay + ' ms';
+            nodeDelayCache[name] = delayTxt;
+          }
+        }
+        if (!delayTxt) delayTxt = '测速';
+
         let delayCls = '';
         if (delayTxt.includes('ms')) {
           const ms = parseInt(delayTxt);
@@ -1158,33 +1167,59 @@
 
         const item = document.createElement('div');
         item.className = 'node-item' + (isSelected ? ' selected' : '');
-        item.innerHTML = `
-          <div style="flex: 1;" onclick="selectNode('${escapeStr(name)}')">
-            <div class="node-title">
-              <span>${icon}</span>
-              <span>${name}</span>
-              <span class="node-tag-type">${pType}</span>
-            </div>
-            <div class="node-sub">${isSelected ? '● 当前正在使用此节点' : '○ 点击即可手动切换'}</div>
+
+        const mainDiv = document.createElement('div');
+        mainDiv.style.flex = '1';
+        mainDiv.onclick = () => selectNode(name);
+        mainDiv.innerHTML = `
+          <div class="node-title">
+            <span>${icon}</span>
+            <span>${escapeHtml(name)}</span>
+            <span class="node-tag-type">${escapeHtml(pType)}</span>
           </div>
-          <div class="node-actions">
-            <span class="node-delay ${delayCls}" id="delay-${encodeURIComponent(name)}" onclick="testSingleDelay('${escapeStr(name)}')">${delayTxt}</span>
-            <button class="node-del-btn" title="删除节点" onclick="deleteNode('${escapeStr(name)}', event)">🗑️</button>
-          </div>
+          <div class="node-sub">${isSelected ? '● 当前正在使用此节点' : '○ 点击即可手动切换'}</div>
         `;
+
+        const actDiv = document.createElement('div');
+        actDiv.className = 'node-actions';
+
+        const delaySpan = document.createElement('span');
+        delaySpan.className = 'node-delay ' + delayCls;
+        delaySpan.id = 'delay-' + encodeURIComponent(name);
+        delaySpan.innerText = delayTxt;
+        delaySpan.onclick = (e) => { e.stopPropagation(); testSingleDelay(name); };
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'node-del-btn';
+        delBtn.title = '删除节点';
+        delBtn.innerText = '🗑️';
+        delBtn.onclick = (e) => { e.stopPropagation(); deleteNode(name, e); };
+
+        actDiv.appendChild(delaySpan);
+        actDiv.appendChild(delBtn);
+
+        item.appendChild(mainDiv);
+        item.appendChild(actDiv);
         listEl.appendChild(item);
       });
     }
 
-    function escapeStr(str) {
-      return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
 
     async function selectNode(name) {
       if (name === currentNode) return;
       try {
         if (isKsu) {
-          await ksuExec(`curl -s -X PUT http://127.0.0.1:9090/proxies/PROXY -H "Content-Type: application/json" -d '{"name":"${name}"}'`);
+          const bodyStr = JSON.stringify({ name: name }).replace(/'/g, "'\\''");
+          await ksuExec(`curl -m 3 -s -X PUT http://127.0.0.1:9090/proxies/PROXY -H "Content-Type: application/json" -d '${bodyStr}'`);
         } else {
           await fetch(`${API}/proxies/PROXY`, {
             method: 'PUT',
@@ -1231,25 +1266,49 @@
       }
     }
 
+    async function saveUpdatedConfig(modifierFn) {
+      if (!currentConfig) await loadFullConfig();
+      if (!currentConfig || !currentConfig.outbounds) {
+        throw new Error('无法读取完整配置，请检查 KernelSU 权限');
+      }
+      modifierFn(currentConfig);
+      const jsonStr = JSON.stringify(currentConfig, null, 2);
+      // Safe UTF-8 Base64 encoding
+      const b64 = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode('0x' + p1)));
+      const res = await ksuExec(`sh /data/adb/box/scripts/box.node save '${b64}'`);
+      if (res.errno !== 0) {
+        throw new Error(res.stderr || res.stdout || '保存配置失败');
+      }
+      return true;
+    }
+
     async function deleteNode(name, ev) {
       if (ev) ev.stopPropagation();
       if (!confirm(`确定要彻底删除节点 [${name}] 吗？`)) return;
 
       try {
         if (isKsu) {
-          const safeName = name.replace(/"/g, '\\"');
-          const res = await ksuExec(`sh /data/adb/box/scripts/box.node del "${safeName}"`);
-          if (res.errno === 0) {
-            showToast('已删除节点: ' + name);
-            await fetchClashState();
-          } else {
-            showToast('删除失败: ' + res.stderr);
-          }
+          await saveUpdatedConfig(cfg => {
+            cfg.outbounds = cfg.outbounds.filter(o => o.tag !== name);
+            const proxySel = cfg.outbounds.find(o => o.tag === 'PROXY' && Array.isArray(o.outbounds));
+            if (proxySel) {
+              proxySel.outbounds = proxySel.outbounds.filter(t => t !== name);
+              if (proxySel.default === name) {
+                proxySel.default = proxySel.outbounds[0] || 'direct';
+              }
+            }
+            const msSel = cfg.outbounds.find(o => o.tag === 'MICROSOFT' && Array.isArray(o.outbounds));
+            if (msSel) {
+              msSel.outbounds = msSel.outbounds.filter(t => t !== name);
+            }
+          });
+          showToast('已删除节点: ' + name);
+          await fetchClashState();
         } else {
           showToast('删除功能仅在 KernelSU 环境下支持');
         }
       } catch (e) {
-        showToast('操作异常: ' + e);
+        showToast('删除失败: ' + e.message);
       }
     }
 
@@ -1271,22 +1330,30 @@
         }
 
         if (isKsu) {
-          const jsonStr = JSON.stringify(payload).replace(/'/g, "'\\''");
-          const cmd = `sh /data/adb/box/scripts/box.node add '${jsonStr}'`;
-          const res = await ksuExec(cmd);
-          if (res.errno === 0) {
-            showToast('节点已成功添加并生效！');
-            document.getElementById('importInput').value = '';
-            switchTab('nodes');
-            await fetchClashState();
-          } else {
-            showToast('添加失败: ' + res.stderr);
-          }
+          await saveUpdatedConfig(cfg => {
+            const tag = payload.tag || ('节点-' + Date.now().toString().slice(-4));
+            payload.tag = tag;
+            cfg.outbounds = cfg.outbounds.filter(o => o.tag !== tag);
+            const lastIdx = cfg.outbounds.findIndex(o => o.type === 'direct' || o.type === 'block');
+            if (lastIdx !== -1) {
+              cfg.outbounds.splice(lastIdx, 0, payload);
+            } else {
+              cfg.outbounds.push(payload);
+            }
+            const proxySel = cfg.outbounds.find(o => o.tag === 'PROXY' && Array.isArray(o.outbounds));
+            if (proxySel && !proxySel.outbounds.includes(tag)) {
+              proxySel.outbounds.push(tag);
+            }
+          });
+          showToast('节点已成功添加并生效！');
+          document.getElementById('importInput').value = '';
+          switchTab('nodes');
+          await fetchClashState();
         } else {
           showToast('添加功能仅在 KernelSU 环境下支持');
         }
       } catch (e) {
-        showToast('解析失败: ' + e.message);
+        showToast('添加失败: ' + e.message);
       }
     }
 
@@ -1386,14 +1453,25 @@
       }
 
       if (isKsu && payload) {
-        const jsonStr = JSON.stringify(payload).replace(/'/g, "'\\''");
-        const res = await ksuExec(`sh /data/adb/box/scripts/box.node add '${jsonStr}'`);
-        if (res.errno === 0) {
+        try {
+          await saveUpdatedConfig(cfg => {
+            cfg.outbounds = cfg.outbounds.filter(o => o.tag !== payload.tag);
+            const lastIdx = cfg.outbounds.findIndex(o => o.type === 'direct' || o.type === 'block');
+            if (lastIdx !== -1) {
+              cfg.outbounds.splice(lastIdx, 0, payload);
+            } else {
+              cfg.outbounds.push(payload);
+            }
+            const proxySel = cfg.outbounds.find(o => o.tag === 'PROXY' && Array.isArray(o.outbounds));
+            if (proxySel && !proxySel.outbounds.includes(payload.tag)) {
+              proxySel.outbounds.push(payload.tag);
+            }
+          });
           showToast('手动节点保存成功！');
           switchTab('nodes');
           await fetchClashState();
-        } else {
-          showToast('保存失败: ' + res.stderr);
+        } catch (e) {
+          showToast('保存失败: ' + e.message);
         }
       }
     }
