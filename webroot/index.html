@@ -2,6 +2,9 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#0a0e17">
   <title>KernelSU sing-box 控制中枢</title>
@@ -436,13 +439,22 @@
     <div class="card">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
         <span style="font-size: 13px; color: var(--text-sub); font-weight: 600;">当前生效国外节点</span>
-        <button class="btn btn-sm" onclick="switchTab('nodes')">切换节点 ➔</button>
+        <button class="btn btn-sm" onclick="switchTab('nodes')">管理节点 ➔</button>
       </div>
-      <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
         <span id="activeNodeIcon" style="font-size: 26px;">🌐</span>
         <div>
           <div id="activeNodeName" style="font-size: 15.5px; font-weight: 700;">加载中...</div>
           <div id="activeNodeDetail" style="font-size: 12px; color: var(--text-sub);">海外流量出口</div>
+        </div>
+      </div>
+      <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
+        <div style="font-size: 11.5px; color: var(--text-sub); margin-bottom: 6px; display: flex; justify-content: space-between;">
+          <span>快速选择出海节点:</span>
+          <span style="color: var(--accent); cursor: pointer;" onclick="switchTab('nodes')">测速/增删 ➔</span>
+        </div>
+        <div id="quickNodeList" style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="text-align: center; color: var(--text-sub); font-size: 12px; padding: 8px;">正在加载节点...</div>
         </div>
       </div>
     </div>
@@ -776,17 +788,36 @@
       }
     }
 
+    let lastTrafficTime = Date.now();
+    let lastTrafficDown = 0;
+    let lastTrafficUp = 0;
     let trafficPollTimer = null;
     function fallbackTrafficPoll() {
       if (trafficPollTimer) return;
       trafficPollTimer = setInterval(async () => {
         try {
+          let data = null;
           if (isKsu) {
-            const r = await ksuExec('curl -s -m 1 http://127.0.0.1:9090/traffic');
-            if (r.stdout) {
-              const lines = r.stdout.trim().split('\n');
-              const last = JSON.parse(lines[lines.length - 1]);
-              updateTrafficUI(last.up || 0, last.down || 0);
+            const r = await ksuExec('curl -m 1 -s http://127.0.0.1:9090/connections');
+            if (r.stdout) data = JSON.parse(r.stdout);
+          } else {
+            const res = await fetch(`${API}/connections`);
+            data = await res.json();
+          }
+          if (data) {
+            const now = Date.now();
+            const dt = (now - lastTrafficTime) / 1000;
+            if (dt > 0.5) {
+              const curDown = data.downloadTotal || 0;
+              const curUp = data.uploadTotal || 0;
+              if (lastTrafficDown > 0 || lastTrafficUp > 0) {
+                const speedDown = Math.max(0, (curDown - lastTrafficDown) / dt);
+                const speedUp = Math.max(0, (curUp - lastTrafficUp) / dt);
+                updateTrafficUI(speedUp, speedDown);
+              }
+              lastTrafficDown = curDown;
+              lastTrafficUp = curUp;
+              lastTrafficTime = now;
             }
           }
         } catch(e) {}
@@ -1003,9 +1034,26 @@
       await loadFullConfig();
       await fetchClashState();
       fetchIpInfo();
+      fetchSystemStatus();
       initTrafficStream();
       setInterval(fetchClashState, 5000);
       setInterval(fetchSmartHomeState, 4000);
+      setInterval(fetchSystemStatus, 5000);
+    }
+
+    async function fetchSystemStatus() {
+      try {
+        if (isKsu) {
+          const res = await ksuExec('sh /data/adb/box/scripts/box.node status');
+          if (res.errno === 0 && res.stdout) {
+            const st = JSON.parse(res.stdout);
+            const pidEl = document.getElementById('sysPid');
+            const memEl = document.getElementById('sysMem');
+            if (pidEl && st.pid) pidEl.innerText = st.pid;
+            if (memEl && st.mem_mb) memEl.innerText = `${st.mem_mb} MB (已调优)`;
+          }
+        }
+      } catch (e) {}
     }
 
     async function loadFullConfig() {
@@ -1119,9 +1167,12 @@
 
     function renderNodes(nodeList) {
       const listEl = document.getElementById('nodeList');
-      if (!listEl) return;
-      document.getElementById('nodeCount').innerText = nodeList.length;
-      listEl.innerHTML = '';
+      const quickListEl = document.getElementById('quickNodeList');
+      if (document.getElementById('nodeCount')) {
+        document.getElementById('nodeCount').innerText = nodeList.length;
+      }
+      if (listEl) listEl.innerHTML = '';
+      if (quickListEl) quickListEl.innerHTML = '';
 
       let list = [...nodeList];
       if (isSortedByDelay) {
@@ -1165,42 +1216,70 @@
           delayCls = 'slow';
         }
 
-        const item = document.createElement('div');
-        item.className = 'node-item' + (isSelected ? ' selected' : '');
+        // 1. Render in full Node List (View: Nodes)
+        if (listEl) {
+          const item = document.createElement('div');
+          item.className = 'node-item' + (isSelected ? ' selected' : '');
 
-        const mainDiv = document.createElement('div');
-        mainDiv.style.flex = '1';
-        mainDiv.onclick = () => selectNode(name);
-        mainDiv.innerHTML = `
-          <div class="node-title">
-            <span>${icon}</span>
-            <span>${escapeHtml(name)}</span>
-            <span class="node-tag-type">${escapeHtml(pType)}</span>
-          </div>
-          <div class="node-sub">${isSelected ? '● 当前正在使用此节点' : '○ 点击即可手动切换'}</div>
-        `;
+          const mainDiv = document.createElement('div');
+          mainDiv.style.flex = '1';
+          mainDiv.onclick = () => selectNode(name);
+          mainDiv.innerHTML = `
+            <div class="node-title">
+              <span>${icon}</span>
+              <span>${escapeHtml(name)}</span>
+              <span class="node-tag-type">${escapeHtml(pType)}</span>
+            </div>
+            <div class="node-sub">${isSelected ? '● 当前正在使用此节点' : '○ 点击即可手动切换'}</div>
+          `;
 
-        const actDiv = document.createElement('div');
-        actDiv.className = 'node-actions';
+          const actDiv = document.createElement('div');
+          actDiv.className = 'node-actions';
 
-        const delaySpan = document.createElement('span');
-        delaySpan.className = 'node-delay ' + delayCls;
-        delaySpan.id = 'delay-' + encodeURIComponent(name);
-        delaySpan.innerText = delayTxt;
-        delaySpan.onclick = (e) => { e.stopPropagation(); testSingleDelay(name); };
+          const delaySpan = document.createElement('span');
+          delaySpan.className = 'node-delay ' + delayCls;
+          delaySpan.id = 'delay-' + encodeURIComponent(name);
+          delaySpan.innerText = delayTxt;
+          delaySpan.onclick = (e) => { e.stopPropagation(); testSingleDelay(name); };
 
-        const delBtn = document.createElement('button');
-        delBtn.className = 'node-del-btn';
-        delBtn.title = '删除节点';
-        delBtn.innerText = '🗑️';
-        delBtn.onclick = (e) => { e.stopPropagation(); deleteNode(name, e); };
+          const delBtn = document.createElement('button');
+          delBtn.className = 'node-del-btn';
+          delBtn.title = '删除节点';
+          delBtn.innerText = '🗑️';
+          delBtn.onclick = (e) => { e.stopPropagation(); deleteNode(name, e); };
 
-        actDiv.appendChild(delaySpan);
-        actDiv.appendChild(delBtn);
+          actDiv.appendChild(delaySpan);
+          actDiv.appendChild(delBtn);
 
-        item.appendChild(mainDiv);
-        item.appendChild(actDiv);
-        listEl.appendChild(item);
+          item.appendChild(mainDiv);
+          item.appendChild(actDiv);
+          listEl.appendChild(item);
+        }
+
+        // 2. Render in Quick Node List on Dashboard
+        if (quickListEl) {
+          const qItem = document.createElement('div');
+          qItem.className = 'node-item' + (isSelected ? ' selected' : '');
+          qItem.style.padding = '8px 12px';
+          qItem.style.cursor = 'pointer';
+          qItem.onclick = () => selectNode(name);
+          qItem.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                <span style="font-size: 16px;">${icon}</span>
+                <span style="font-size: 13px; font-weight: ${isSelected ? '700' : '500'}; color: ${isSelected ? 'var(--accent)' : 'var(--text-main)'}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  ${escapeHtml(name)}
+                </span>
+                <span class="node-tag-type" style="font-size: 10px; padding: 1px 5px;">${escapeHtml(pType)}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="node-delay ${delayCls}" style="font-size: 11px; padding: 2px 6px;">${delayTxt}</span>
+                ${isSelected ? '<span style="color: var(--accent); font-size: 14px; font-weight: bold;">✓</span>' : ''}
+              </div>
+            </div>
+          `;
+          quickListEl.appendChild(qItem);
+        }
       });
     }
 
