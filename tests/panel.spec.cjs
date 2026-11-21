@@ -120,14 +120,14 @@ const tags = [
   });
 
   await page.goto(pathToFileURL(root + '/webroot/index.html').href);
-  await page.getByText('运行中', { exact: true }).waitFor();
+  await page.getByText('工作中', { exact: true }).waitFor();
   assert(await page.getByText('家庭网络 · HomeWiFi', { exact: true }).isVisible());
   await page.screenshot({ path: root + '/artifacts/overview-light.png', fullPage: true });
 
-  await page.locator('.bottom-nav [data-tab="nodes"]').click();
-  assert.equal(await page.locator('.node-row').count(), 5);
+  await page.locator('.m3-nav-bar [data-tab="nodes"]').click();
+  assert.equal(await page.locator('.node-card').count(), 5);
   await page.locator('[data-group="MICROSOFT"]').click();
-  assert.equal(await page.locator('.node-row').count(), 2);
+  assert.equal(await page.locator('.node-card').count(), 2);
   await page.locator('.node-select').nth(1).click();
   await page.waitForTimeout(80);
   assert.equal(snapshot.proxies.proxies.MICROSOFT.now, tags[4]);
@@ -144,19 +144,19 @@ const tags = [
   await page.waitForTimeout(3200);
   await page.screenshot({ path: root + '/artifacts/nodes-light.png', fullPage: true });
 
-  await page.locator('.bottom-nav [data-tab="connections"]').click();
+  await page.locator('.m3-nav-bar [data-tab="connections"]').click();
   await page.locator('#connection-search').fill('no-match');
   assert(await page.getByText('没有匹配的连接').isVisible());
   await page.locator('#connection-search').fill('rewards');
   assert(await page.locator('.connection-row').isVisible());
   await page.screenshot({ path: root + '/artifacts/connections-light.png', fullPage: true });
 
-  await page.locator('.bottom-nav [data-tab="routing"]').click();
+  await page.locator('.m3-nav-bar [data-tab="routing"]').click();
   await page.waitForTimeout(80);
   assert.equal(await page.locator('#direct-domains').inputValue(), 'pushplus.plus');
   await page.screenshot({ path: root + '/artifacts/routing-light.png', fullPage: true });
 
-  await page.locator('.bottom-nav [data-tab="settings"]').click();
+  await page.locator('.m3-nav-bar [data-tab="settings"]').click();
   await page.locator('#home-ssid').fill("Home's Wi-Fi");
   await page.locator('#home-form button').click();
   await page.waitForTimeout(80);
@@ -165,10 +165,14 @@ const tags = [
   await page.waitForTimeout(3200);
   await page.screenshot({ path: root + '/artifacts/settings-dark.png', fullPage: true });
 
-  await page.locator('.bottom-nav [data-tab="overview"]').click();
+  await page.locator('.m3-nav-bar [data-tab="overview"]').click();
+  await page.waitForTimeout(200);
   await page.screenshot({ path: root + '/artifacts/overview-dark.png', fullPage: true });
 
-  await page.locator('.bottom-nav [data-tab="nodes"]').click();
+  await page.locator('.m3-nav-bar [data-tab="nodes"]').click();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: root + '/artifacts/nodes-dark.png', fullPage: true });
+
   await page.locator('[data-action="import"]').click();
   await page.locator('#sheet textarea').fill('vless://12345678-1234-1234-1234-123456789012@example.net:443?security=tls&sni=example.net#Test%20Node');
   await page.getByText('校验并导入', { exact: true }).click();
@@ -180,7 +184,7 @@ const tags = [
   for (const width of [320, 393, 600]) {
     await page.setViewportSize({ width, height: 852 });
     for (const tab of ['overview', 'nodes', 'connections', 'routing', 'settings']) {
-      await page.locator(`.bottom-nav [data-tab="${tab}"]`).click();
+      await page.locator(`.m3-nav-bar [data-tab="${tab}"]`).click();
       assert(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         `Overflow at ${width}/${tab}`
@@ -190,5 +194,5 @@ const tags = [
 
   assert.deepEqual(errors, []);
   await browser.close();
-  console.log('Panel integration checks passed: navigation, groups, failure feedback, delay, search, routing, settings, import, theme, responsive layout.');
+  console.log('Panel integration checks passed: Material 3 layout, 2-col nodes grid, groups, failure feedback, delay, search, routing, settings, import, dark/light themes, responsive layout.');
 })();

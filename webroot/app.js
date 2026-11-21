@@ -96,7 +96,7 @@
     if (/新加坡|🇸🇬|\bSG\b/i.test(name)) return 'SG';
     if (/日本|🇯🇵|\bJP\b/i.test(name)) return 'JP';
     if (/台湾|🇹🇼|\bTW\b/i.test(name)) return 'TW';
-    return '';
+    return 'NET';
   }
 
   function cleanName(name) {
@@ -121,7 +121,7 @@
     if (!['overview', 'nodes', 'connections', 'routing', 'settings'].includes(page)) return;
     state.page = page;
     document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === `page-${page}`));
-    document.querySelectorAll('.bottom-nav button').forEach(el => {
+    document.querySelectorAll('.m3-nav-bar button').forEach(el => {
       const active = el.dataset.tab === page;
       el.classList.toggle('active', active);
       if (active) el.setAttribute('aria-current', 'page');
@@ -144,24 +144,12 @@
     const proxy = s.proxies?.proxies?.PROXY;
     const microsoft = s.proxies?.proxies?.MICROSOFT;
 
-    const badge = $('core-badge');
-    badge.className = `status-tag ${running ? 'running' : 'stopped'}`;
-    badge.replaceChildren(create('span', 'dot'), document.createTextNode(running ? '运行中' : '已停止'));
-
-    $('status-headline').textContent = running ? state.version : '核心未运行';
-    $('status-meta').textContent = running && s.core?.pid
-      ? `PID ${s.core.pid} · 127.0.0.1:9090`
-      : '请在设置中重启或查看日志';
-    $('mode-badge').textContent = running ? modeLabel(mode) : '未启动';
-
-    const envName = home
-      ? '家庭网络'
-      : s.home?.interface?.startsWith('wlan')
-        ? '外部 Wi-Fi'
-        : '移动网络';
-    const netTarget = s.home?.ssid || s.home?.gateway || s.home?.interface || '';
-    $('network-summary').textContent = netTarget ? `${envName} · ${netTarget}` : envName;
-    $('auto-status').textContent = automatic ? '自动切换：开' : '手动模式';
+    $('status-banner').className = `m3-status-card ${running ? 'working' : 'stopped'}`;
+    $('core-status-title').textContent = running ? '工作中' : '已停止';
+    $('mode-chip').textContent = running ? modeLabel(mode) : '未启动';
+    $('core-status-meta').textContent = running && s.core?.pid
+      ? `${state.version} · PID ${s.core.pid}`
+      : '核心未运行，可在设置中重启或查看日志';
 
     $('control-source').textContent = automatic ? '自动切换已开启' : '手动控制';
     document.querySelectorAll('[data-mode]').forEach(el => {
@@ -171,25 +159,37 @@
     });
 
     $('mode-description').textContent = !running
-      ? '核心当前未运行，可在设置中重启或查看运行日志。'
+      ? '核心当前未运行，可在设置中重启或查看日志。'
       : home && mode === 'Direct'
-        ? '当前处于家庭网络，流量直连交由软路由统一分流。'
+        ? '已识别家庭网络，流量直连交由软路由统一分流。'
         : mode === 'Direct'
           ? '所有流量直连，核心保持运行以便随时切换。'
           : mode === 'Global'
-            ? '所有非私有流量均经由「通用代理」出口转发。'
-            : '国内域名与 IP 直连，其余流量按策略组转发。';
+            ? '所有非私有流量均经由「通用代理」转发。'
+            : '国内域名与 IP 直连，其余流量按规则转发。';
 
     $('current-node').textContent = cleanName(proxy?.now);
-    $('current-node-note').textContent = mode === 'Direct' ? 'PROXY · 待命（当前直连）' : 'PROXY · 默认代理出口';
+    $('current-node-note').textContent = mode === 'Direct' ? '待命 · 当前直连' : 'PROXY 默认出口';
 
     $('microsoft-node').textContent = cleanName(microsoft?.now);
     $('microsoft-note').textContent = home && mode === 'Direct'
-      ? 'MICROSOFT · 软路由处理'
-      : 'MICROSOFT · Bing / M365';
+      ? '当前由软路由处理'
+      : '美国出口 · M365';
 
     $('runtime-memory').textContent = `${((s.core?.rss_kb || 0) / 1024).toFixed(1)} MB`;
     $('runtime-connections').textContent = String(s.connections?.connections?.length || 0);
+
+    const envName = home
+      ? '家庭网络'
+      : s.home?.interface?.startsWith('wlan')
+        ? '外部 Wi-Fi'
+        : '移动网络';
+    const netTarget = s.home?.ssid || s.home?.gateway || s.home?.interface || '';
+    $('network-title').textContent = netTarget ? `${envName} · ${netTarget}` : envName;
+    $('network-sub').textContent = home ? '已匹配家庭网络联动规则' : '外出网络环境';
+    const autoPill = $('auto-pill');
+    autoPill.textContent = automatic ? '自动切换' : '手动';
+    autoPill.className = `tonal-pill${automatic ? ' active' : ''}`;
 
     if (!state.dirtyHome) {
       $('automatic-switch').checked = automatic;
@@ -247,7 +247,7 @@
   async function write(action) {
     if (state.writing) return;
     state.writing = true;
-    const controls = document.querySelectorAll('[data-mode], #home-form button, #routing-form button, #sheet-content .button');
+    const controls = document.querySelectorAll('[data-mode], #home-form button, #routing-form button, #sheet-content button');
     controls.forEach(el => { el.disabled = true; });
     try {
       await action();
@@ -279,8 +279,8 @@
     const root = openSheet(title);
     root.append(create('p', 'sheet-text', message));
     const row = create('div', 'sheet-actions');
-    const cancel = create('button', 'button', '取消');
-    const proceed = create('button', `button ${danger ? 'danger' : 'primary'}`, label);
+    const cancel = create('button', 'm3-outline-btn', '取消');
+    const proceed = create('button', danger ? 'm3-danger-btn' : 'm3-filled-btn', label);
     cancel.onclick = () => $('sheet').close();
     proceed.onclick = () => write(async () => {
       await action();
@@ -298,6 +298,8 @@
     list.replaceChildren();
 
     document.querySelectorAll('[data-group]').forEach(el => el.classList.toggle('selected', el.dataset.group === state.group));
+    $('sort-btn').classList.toggle('active', state.sort);
+    $('sort-btn').textContent = state.sort ? '按延迟中' : '延迟排序';
     $('group-description').textContent = state.group === 'MICROSOFT'
       ? '微软分流组独立生效，建议仅添加美国出口节点。'
       : '切换节点仅对当前策略组的新建连接生效。';
@@ -309,37 +311,52 @@
     $('node-count').textContent = `${names.length} 个节点`;
 
     if (!names.length) {
-      list.append(create('div', 'empty-state', '暂无节点，点击右上角「导入」添加配置'));
+      list.append(create('div', 'empty-card', '暂无节点，点击右上角「导入」添加配置'));
       return;
     }
 
     names.forEach(name => {
       const selected = group.now === name;
-      const row = create('div', `node-row${selected ? ' selected' : ''}`);
+      const card = create('article', `node-card${selected ? ' selected' : ''}`);
 
-      const button = create('button', 'node-select');
-      button.setAttribute('aria-label', `选择 ${name}`);
-      button.setAttribute('aria-pressed', String(selected));
+      const top = create('div', 'node-card-top');
+      top.append(create('span', 'region-tag', region(name)));
 
-      const check = create('span', 'node-check');
-      if (selected) check.innerHTML = icon('check');
+      const topRight = create('div', 'node-top-right');
+      if (selected) {
+        const badge = create('span', 'selected-dot');
+        badge.innerHTML = icon('check');
+        topRight.append(badge);
+      }
+      const edit = create('button', 'node-edit');
+      edit.innerHTML = icon('edit');
+      edit.setAttribute('aria-label', `编辑 ${cleanName(name)}`);
+      edit.onclick = () => editNode(name);
+      topRight.append(edit);
+      top.append(topRight);
 
-      const info = create('span', 'node-info');
-      info.append(create('span', 'node-name', cleanName(name)));
-
-      const detail = create('span', 'node-detail');
-      const code = region(name);
-      if (code) detail.append(create('span', 'region-code', code));
-      detail.append(document.createTextNode(map[name]?.type || '代理'));
-      info.append(detail);
-
-      button.append(check, info);
-      button.onclick = () => write(async () => {
+      const selectNode = () => write(async () => {
         await api('PUT', '/proxies/' + state.group, { name });
         notify('节点已切换');
       });
 
-      const actions = create('div', 'node-actions');
+      const selectBtn = create('button', 'node-select');
+      selectBtn.setAttribute('aria-label', `选择 ${name}`);
+      selectBtn.setAttribute('aria-pressed', String(selected));
+      selectBtn.append(create('span', 'node-name', cleanName(name)));
+      selectBtn.onclick = event => {
+        event.stopPropagation();
+        selectNode();
+      };
+
+      card.onclick = event => {
+        if (event.target.closest('button')) return;
+        selectNode();
+      };
+
+      const foot = create('div', 'node-card-foot');
+      foot.append(create('span', 'node-proto', map[name]?.type || '代理'));
+
       const value = state.delays.get(name);
       let latencyClass = 'latency';
       let latencyText = '测速';
@@ -354,15 +371,10 @@
       }
       const latency = create('button', latencyClass, latencyText);
       latency.onclick = () => testNode(name);
+      foot.append(latency);
 
-      const edit = create('button', 'node-edit');
-      edit.innerHTML = icon('edit');
-      edit.setAttribute('aria-label', `编辑 ${cleanName(name)}`);
-      edit.onclick = () => editNode(name);
-
-      actions.append(latency, edit);
-      row.append(button, actions);
-      list.append(row);
+      card.append(top, selectBtn, foot);
+      list.append(card);
     });
   }
 
@@ -530,7 +542,7 @@
     const id = `field-${sequence++}`;
     const wrapper = create('label', `field-label${options.first ? ' first' : ''}`, label);
     wrapper.htmlFor = id;
-    const input = create(options.multiline ? 'textarea' : 'input', options.multiline ? 'text-area code-editor' : 'text-input');
+    const input = create(options.multiline ? 'textarea' : 'input', options.multiline ? 'm3-field code-editor' : 'm3-field');
     input.id = id;
     input.value = value || '';
     if (options.placeholder) input.placeholder = options.placeholder;
@@ -605,7 +617,7 @@
     root.append(create('p', 'sheet-text', '粘贴分享链接（每行一条）或 sing-box 节点 JSON。'));
     const input = field(root, '链接或 JSON', '', { multiline: true, placeholder: 'vless://…\nhysteria2://…' });
     input.classList.remove('code-editor');
-    input.classList.add('mono-input');
+    input.classList.add('mono-field');
 
     const msLabel = create('label', 'checkbox-row');
     const checkbox = create('input');
@@ -613,7 +625,7 @@
     msLabel.append(checkbox, document.createTextNode('同时加入微软分流组（仅限美国出口）'));
     root.append(msLabel);
 
-    const submit = create('button', 'button primary full-width', '校验并导入');
+    const submit = create('button', 'm3-filled-btn full-width', '校验并导入');
     root.append(submit);
     sheetError(root);
 
@@ -660,8 +672,8 @@
       root.append(create('p', 'note', '保存前由 sing-box 校验，认证信息仅留在本机。'));
 
       const actions = create('div', 'sheet-actions');
-      const remove = create('button', 'button danger', '删除节点');
-      const save = create('button', 'button primary', '校验并保存');
+      const remove = create('button', 'm3-danger-btn', '删除节点');
+      const save = create('button', 'm3-filled-btn', '校验并保存');
       actions.append(remove, save);
       root.append(actions);
       sheetError(root);
@@ -710,7 +722,7 @@
       const root = openSheet('完整配置（JSON）');
       root.append(create('p', 'sheet-text', '保存会短暂重启核心；仅接受通过校验的配置，启动失败自动恢复上一份。'));
       const input = field(root, 'config.json', JSON.stringify(config, null, 2), { multiline: true });
-      const button = create('button', 'button primary full-width', '校验并应用');
+      const button = create('button', 'm3-filled-btn full-width', '校验并应用');
       root.append(button);
       sheetError(root);
       button.onclick = () => write(async () => {
@@ -740,7 +752,7 @@
       : preference;
     document.documentElement.dataset.theme = resolved;
     document.querySelectorAll('[data-theme]').forEach(el => el.classList.toggle('selected', el.dataset.theme === preference));
-    document.querySelector('meta[name="theme-color"]').content = resolved === 'dark' ? '#0e1014' : '#f3f4f6';
+    document.querySelector('meta[name="theme-color"]').content = resolved === 'dark' ? '#111318' : '#f4f6fa';
   }
 
   document.addEventListener('click', event => {
@@ -785,7 +797,6 @@
       importNodes();
     } else if (action === 'sort') {
       state.sort = !state.sort;
-      event.target.textContent = state.sort ? '恢复顺序' : '按延迟排序';
       renderNodes();
     } else if (action === 'test-all') {
       testAll();
@@ -840,7 +851,8 @@
 
   if (!supported) {
     $('bridge-warning').hidden = false;
-    $('core-badge').textContent = '未在 KernelSU 中打开';
+    $('core-status-title').textContent = '等待 KernelSU';
+    $('core-status-meta').textContent = '请在 KernelSU 模块页打开';
   } else {
     refresh();
     bridge('api', 'GET', '/version').then(value => {
