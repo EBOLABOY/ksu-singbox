@@ -27,7 +27,7 @@ api() {
     [ -s "$API_SECRET_FILE" ] || fail 'API secret missing'
     api_secret=$(cat "$API_SECRET_FILE") || fail '无法读取 API secret'
     [ -n "$api_secret" ] || fail 'API secret 为空'
-    curl --noproxy '*' -fsS --connect-timeout 2 --max-time 8 -H "Authorization: Bearer $api_secret" "$@"
+    curl --noproxy '*' -fsS --connect-timeout 2 --max-time 10 -H "Authorization: Bearer $api_secret" "$@"
 }
 write_api_overlay() {
     ensure_secret
@@ -138,8 +138,8 @@ api)
     method=$2; path=$3
     case "$path" in *[!a-zA-Z0-9%_./?\=\&:+-]*) fail 'API 路径无效' ;; esac
     case "$method:$path" in
-      GET:/version|GET:/configs|GET:/proxies|GET:/connections|GET:/proxies/*/delay\?timeout=4000\&url=*) api "http://127.0.0.1:9090$path" ;;
-      PUT:/proxies/PROXY|PUT:/proxies/MICROSOFT) lock_write; body=$(decode "$4") || fail '请求编码无效'; api -X PUT -H 'Content-Type: application/json' --data "$body" "http://127.0.0.1:9090$path" || exit 1; printf '{}\n' ;;
+      GET:/version|GET:/configs|GET:/proxies|GET:/connections|GET:/proxies/*/delay\?timeout=[0-9]*\&url=*) api "http://127.0.0.1:9090$path" ;;
+      PUT:/proxies/PROXY|PUT:/proxies/MICROSOFT|PUT:/proxies/AI) lock_write; body=$(decode "$4") || fail '请求编码无效'; api -X PUT -H 'Content-Type: application/json' --data "$body" "http://127.0.0.1:9090$path" || exit 1; printf '{}\n' ;;
       DELETE:/connections/*) api -X DELETE "http://127.0.0.1:9090$path" || exit 1; printf '{}\n' ;;
       *) fail '不支持的操作' ;;
     esac

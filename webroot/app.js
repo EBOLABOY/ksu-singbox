@@ -177,6 +177,20 @@
       ? '当前由软路由处理'
       : '美国出口 · M365';
 
+    const ai = s.proxies?.proxies?.AI;
+    $('ai-node').textContent = !ai
+      ? '未配置'
+      : ai.now === 'PROXY'
+        ? '跟随通用代理'
+        : cleanName(ai.now);
+    $('ai-note').textContent = !ai
+      ? '导入家宽 SOCKS5 后自动启用'
+      : home && mode === 'Direct'
+        ? '当前由软路由处理'
+        : ai.now === 'PROXY'
+          ? 'Gemini · OpenAI · Claude（未选用家宽）'
+          : 'Gemini · OpenAI · Claude · 独立出口';
+
     $('runtime-memory').textContent = `${((s.core?.rss_kb || 0) / 1024).toFixed(1)} MB`;
     $('runtime-connections').textContent = String(s.connections?.connections?.length || 0);
 
@@ -303,7 +317,9 @@
     $('sort-btn').textContent = state.sort ? '按延迟中' : '延迟排序';
     $('group-description').textContent = state.group === 'MICROSOFT'
       ? '微软分流组独立生效，建议仅添加美国出口节点。'
-      : '切换节点仅对当前策略组的新建连接生效。';
+      : state.group === 'AI'
+        ? 'AI 专线用于 Gemini / OpenAI / Claude，支持导入家宽 SOCKS5 经通用代理链式落地。'
+        : '切换节点仅对当前策略组的新建连接生效。';
 
     let names = [...(group?.all || [])];
     if (state.sort) {
@@ -312,16 +328,20 @@
     $('node-count').textContent = `${names.length} 个节点`;
 
     if (!names.length) {
-      list.append(create('div', 'empty-card', '暂无节点，点击右上角「导入」添加配置'));
+      list.append(create('div', 'empty-card', state.group === 'AI'
+        ? '尚未配置 AI 专线，点击右上角「导入」添加家宽 SOCKS5 链接'
+        : '暂无节点，点击右上角「导入」添加配置'));
       return;
     }
 
     names.forEach(name => {
       const selected = group.now === name;
+      const isProxyRef = state.group === 'AI' && name === 'PROXY';
+      const displayName = isProxyRef ? '跟随通用代理' : cleanName(name);
       const card = create('article', `node-card${selected ? ' selected' : ''}`);
 
       const top = create('div', 'node-card-top');
-      top.append(create('span', 'region-tag', region(name)));
+      top.append(create('span', 'region-tag', isProxyRef ? 'AUTO' : region(name)));
 
       const topRight = create('div', 'node-top-right');
       if (selected) {
@@ -329,11 +349,13 @@
         badge.innerHTML = icon('check');
         topRight.append(badge);
       }
-      const edit = create('button', 'node-edit');
-      edit.innerHTML = icon('edit');
-      edit.setAttribute('aria-label', `编辑 ${cleanName(name)}`);
-      edit.onclick = () => editNode(name);
-      topRight.append(edit);
+      if (!isProxyRef) {
+        const edit = create('button', 'node-edit');
+        edit.innerHTML = icon('edit');
+        edit.setAttribute('aria-label', `编辑 ${displayName}`);
+        edit.onclick = () => editNode(name);
+        topRight.append(edit);
+      }
       top.append(topRight);
 
       const selectNode = () => write(async () => {
@@ -344,7 +366,7 @@
       const selectBtn = create('button', 'node-select');
       selectBtn.setAttribute('aria-label', `选择 ${name}`);
       selectBtn.setAttribute('aria-pressed', String(selected));
-      selectBtn.append(create('span', 'node-name', cleanName(name)));
+      selectBtn.append(create('span', 'node-name', displayName));
       selectBtn.onclick = event => {
         event.stopPropagation();
         selectNode();
@@ -356,15 +378,17 @@
       };
 
       const foot = create('div', 'node-card-foot');
-      foot.append(create('span', 'node-proto', map[name]?.type || '代理'));
+      foot.append(create('span', 'node-proto', isProxyRef ? '策略组回退' : (map[name]?.type || '代理')));
 
       const value = state.delays.get(name);
       let latencyClass = 'latency';
       let latencyText = '测速';
+      const goodMs = state.group === 'AI' ? 800 : 150;
+      const midMs = state.group === 'AI' ? 2200 : 350;
       if (value !== undefined) {
         if (Number.isFinite(value)) {
           latencyText = `${value} ms`;
-          latencyClass += value < 150 ? ' good' : value < 350 ? ' mid' : ' bad';
+          latencyClass += value < goodMs ? ' good' : value < midMs ? ' mid' : ' bad';
         } else {
           latencyText = '超时';
           latencyClass += ' bad';
@@ -380,8 +404,9 @@
   }
 
   async function testNode(name) {
+    const timeout = state.group === 'AI' ? 8000 : 4000;
     try {
-      const result = await api('GET', `/proxies/${encodeSegment(name)}/delay?timeout=4000&url=http%3A%2F%2Fcp.cloudflare.com%2Fgenerate_204`);
+      const result = await api('GET', `/proxies/${encodeSegment(name)}/delay?timeout=${timeout}&url=http%3A%2F%2Fcp.cloudflare.com%2Fgenerate_204`);
       state.delays.set(name, Number(result.delay) || Infinity);
     } catch (_) {
       state.delays.set(name, Infinity);
@@ -552,9 +577,95 @@
     return input;
   }
 
+  const AI_DOMAINS = [
+    'gemini.google.com', 'generativelanguage.googleapis.com', 'aistudio.google.com',
+    'makersuite.google.com', 'robinfrontend-pa.googleapis.com', 'proactivebackend-pa.googleapis.com',
+    'geller-pa.googleapis.com', 'alkalimakersuite-pa.clients6.google.com', 'aisandbox-pa.googleapis.com',
+    'notebooklm.google.com', 'notebooklm.google', 'deepmind.com', 'deepmind.google',
+    'labs.google', 'bard.google.com', 'openai.com', 'chatgpt.com', 'oaistatic.com',
+    'oaiusercontent.com', 'sora.com', 'anthropic.com', 'claude.ai', 'claude.com',
+    'claudeusercontent.com', 'perplexity.ai', 'x.ai', 'grok.com', 'cursor.com', 'cursor.sh'
+  ];
+
+  function ensureAiRouting(config) {
+    config.outbounds ||= [];
+    let aiGroup = config.outbounds.find(o => o.tag === 'AI');
+    if (!aiGroup) {
+      aiGroup = { type: 'selector', tag: 'AI', outbounds: ['PROXY'], default: 'PROXY' };
+      const msIndex = config.outbounds.findIndex(o => o.tag === 'MICROSOFT');
+      const proxyIndex = config.outbounds.findIndex(o => o.tag === 'PROXY');
+      const insertAt = msIndex >= 0 ? msIndex + 1 : proxyIndex >= 0 ? proxyIndex + 1 : 0;
+      config.outbounds.splice(insertAt, 0, aiGroup);
+    } else {
+      aiGroup.outbounds ||= [];
+      if (!aiGroup.outbounds.includes('PROXY')) aiGroup.outbounds.push('PROXY');
+    }
+
+    config.route ||= {};
+    config.route.rule_set ||= [];
+    if (!config.route.rule_set.some(rs => rs.tag === 'geosite-category-ai-!cn')) {
+      const hasProxyHttp = Array.isArray(config.http_clients) && config.http_clients.some(c => c.tag === 'proxy-http');
+      const rs = {
+        tag: 'geosite-category-ai-!cn',
+        type: 'remote',
+        format: 'binary',
+        url: 'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ai-!cn.srs'
+      };
+      if (hasProxyHttp) rs.http_client = 'proxy-http';
+      config.route.rule_set.push(rs);
+    }
+
+    config.route.rules ||= [];
+    if (!config.route.rules.some(r => r.outbound === 'AI')) {
+      const cnIdx = config.route.rules.findIndex(r => Array.isArray(r.rule_set) && (r.rule_set.includes('geoip-cn') || r.rule_set.includes('geosite-cn')));
+      const aiRules = [
+        { network: 'udp', port: 443, rule_set: ['geosite-category-ai-!cn'], action: 'reject' },
+        { network: 'udp', port: 443, domain_suffix: [...AI_DOMAINS], action: 'reject' },
+        { rule_set: ['geosite-category-ai-!cn'], outbound: 'AI' },
+        { domain_suffix: [...AI_DOMAINS], outbound: 'AI' }
+      ];
+      config.route.rules.splice(cnIdx >= 0 ? cnIdx : config.route.rules.length, 0, ...aiRules);
+    }
+
+    if (config.dns?.servers?.some(s => s.type === 'fakeip')) {
+      config.dns.rules ||= [];
+      if (!config.dns.rules.some(r => Array.isArray(r.rule_set) && r.rule_set.includes('geosite-category-ai-!cn'))) {
+        const cnDnsIdx = config.dns.rules.findIndex(r => Array.isArray(r.rule_set) && r.rule_set.includes('geosite-cn'));
+        const aiDnsRules = [
+          { rule_set: ['geosite-category-ai-!cn'], server: 'dns-fakeip' },
+          { domain_suffix: [...AI_DOMAINS], server: 'dns-fakeip' }
+        ];
+        config.dns.rules.splice(cnDnsIdx >= 0 ? cnDnsIdx : config.dns.rules.length, 0, ...aiDnsRules);
+      }
+    }
+    return aiGroup;
+  }
+
+  function parseUserInfo(rawText, link) {
+    const match = rawText.trim().match(/^[a-z0-9+.-]+:\/\/([^@/?#]+)@/i);
+    if (!match) return null;
+    const rawUserInfo = match[1];
+    if (rawUserInfo.includes(':')) {
+      return {
+        username: decodeURIComponent(link.username),
+        password: decodeURIComponent(link.password)
+      };
+    }
+    // Support Shadowrocket-style base64(user:pass) socks links when no ':' is present.
+    try {
+      const decoded = atob(rawUserInfo.replace(/-/g, '+').replace(/_/g, '/'));
+      const colon = decoded.indexOf(':');
+      if (colon > 0 && /^[\x20-\x7e]+$/.test(decoded)) {
+        return { username: decoded.slice(0, colon), password: decoded.slice(colon + 1) };
+      }
+    } catch (_) {}
+    return { username: decodeURIComponent(link.username), password: '' };
+  }
+
   function parseLink(text) {
-    const link = new URL(text.trim());
-    const type = link.protocol.slice(0, -1);
+    const trimmed = text.trim();
+    const link = new URL(trimmed);
+    const type = link.protocol.slice(0, -1).toLowerCase();
     const params = link.searchParams;
     const tag = decodeURIComponent(link.hash.slice(1)) || `${link.hostname} ${type.toUpperCase()}`;
     const common = { tag, server: link.hostname.replace(/^\[|\]$/g, ''), server_port: Number(link.port) || 443 };
@@ -610,21 +721,81 @@
       };
     }
 
-    throw new Error('支持 VLESS、Hysteria 2、Trojan、Shadowsocks，或 sing-box 节点 JSON');
+    if (['socks', 'socks5', 'socks5h'].includes(type)) {
+      const auth = parseUserInfo(trimmed, link);
+      const node = {
+        ...common,
+        type: 'socks',
+        version: '5',
+        server_port: Number(link.port) || 1080
+      };
+      if (auth) {
+        node.username = auth.username;
+        node.password = auth.password;
+      }
+      return node;
+    }
+
+    if (type === 'http' || type === 'https') {
+      const auth = parseUserInfo(trimmed, link);
+      const node = {
+        ...common,
+        type: 'http',
+        server_port: Number(link.port) || (type === 'https' ? 443 : 8080)
+      };
+      if (auth) {
+        node.username = auth.username;
+        node.password = auth.password;
+      }
+      if (type === 'https') {
+        node.tls = { enabled: true, server_name: params.get('sni') || common.server };
+      }
+      return node;
+    }
+
+    throw new Error('支持 VLESS、Hysteria 2、Trojan、Shadowsocks、SOCKS5、HTTP，或 sing-box 节点 JSON');
   }
 
   function importNodes() {
     const root = openSheet('导入节点');
-    root.append(create('p', 'sheet-text', '粘贴分享链接（每行一条）或 sing-box 节点 JSON。'));
-    const input = field(root, '链接或 JSON', '', { multiline: true, placeholder: 'vless://…\nhysteria2://…' });
+    root.append(create('p', 'sheet-text', '粘贴分享链接（每行一条，支持 VLESS / Hysteria2 / SOCKS5 家宽等）或 sing-box 节点 JSON。'));
+    const input = field(root, '链接或 JSON', '', { multiline: true, placeholder: 'vless://…\nsocks://token:@host:7129#US-家宽' });
     input.classList.remove('code-editor');
     input.classList.add('mono-field');
 
+    const aiLabel = create('label', 'checkbox-row');
+    const aiCheck = create('input');
+    aiCheck.type = 'checkbox';
+    aiCheck.id = 'import-ai';
+    aiCheck.checked = state.group === 'AI';
+    aiLabel.append(aiCheck, document.createTextNode('加入 AI 专线（Gemini / OpenAI / Claude）'));
+    root.append(aiLabel);
+
+    const chainLabel = create('label', 'checkbox-row');
+    const chainCheck = create('input');
+    chainCheck.type = 'checkbox';
+    chainCheck.id = 'import-chain';
+    chainCheck.checked = state.group === 'AI';
+    chainLabel.append(chainCheck, document.createTextNode('经由通用代理中转（家宽落地推荐）'));
+    root.append(chainLabel);
+
     const msLabel = create('label', 'checkbox-row');
-    const checkbox = create('input');
-    checkbox.type = 'checkbox';
-    msLabel.append(checkbox, document.createTextNode('同时加入微软分流组（仅限美国出口）'));
+    const msCheck = create('input');
+    msCheck.type = 'checkbox';
+    msCheck.id = 'import-ms';
+    msLabel.append(msCheck, document.createTextNode('同时加入微软分流组（仅限美国出口）'));
     root.append(msLabel);
+
+    let manualToggled = false;
+    [aiCheck, chainCheck].forEach(el => el.addEventListener('change', () => { manualToggled = true; }));
+    input.addEventListener('input', () => {
+      if (manualToggled) return;
+      const isResidentialLink = /^\s*(?:socks5?h?|https?):\/\//im.test(input.value);
+      if (isResidentialLink) {
+        aiCheck.checked = true;
+        chainCheck.checked = true;
+      }
+    });
 
     const submit = create('button', 'm3-filled-btn full-width', '校验并导入');
     root.append(submit);
@@ -643,6 +814,8 @@
 
       const config = await loadConfig();
       const allowed = new Set(['vless', 'hysteria2', 'trojan', 'shadowsocks', 'vmess', 'tuic', 'socks', 'http', 'anytls']);
+      const aiGroup = aiCheck.checked ? ensureAiRouting(config) : null;
+
       for (const node of nodes) {
         if (!allowed.has(node.type) || !node.tag || !node.server) {
           throw new Error('每个节点需要有效的 type、tag 和 server');
@@ -650,11 +823,33 @@
         if (config.outbounds.some(o => o.tag === node.tag)) {
           throw new Error(`节点名称已存在：${node.tag}`);
         }
+        if (chainCheck.checked && !node.detour) {
+          node.detour = 'PROXY';
+        }
         config.outbounds.push(node);
-        for (const group of config.outbounds.filter(o => o.tag === 'PROXY' || (checkbox.checked && o.tag === 'MICROSOFT'))) {
-          group.outbounds ||= [];
-          group.outbounds.push(node.tag);
-          group.default ||= node.tag;
+
+        // Chained nodes using detour:"PROXY" must never be placed inside PROXY (would create a cycle).
+        const addToProxy = node.detour !== 'PROXY';
+        if (addToProxy) {
+          const proxyGroup = config.outbounds.find(o => o.tag === 'PROXY');
+          if (proxyGroup) {
+            proxyGroup.outbounds ||= [];
+            proxyGroup.outbounds.push(node.tag);
+            proxyGroup.default ||= node.tag;
+          }
+        }
+        if (aiGroup) {
+          aiGroup.outbounds ||= [];
+          aiGroup.outbounds = [node.tag, ...aiGroup.outbounds.filter(t => t !== node.tag)];
+          aiGroup.default = node.tag;
+        }
+        if (msCheck.checked) {
+          const msGroup = config.outbounds.find(o => o.tag === 'MICROSOFT');
+          if (msGroup) {
+            msGroup.outbounds ||= [];
+            msGroup.outbounds.push(node.tag);
+            msGroup.default ||= node.tag;
+          }
         }
       }
       await saveConfig(config);
@@ -793,6 +988,9 @@
       schedule();
     } else if (action === 'microsoft') {
       state.group = 'MICROSOFT';
+      navigate('nodes');
+    } else if (action === 'ai') {
+      state.group = 'AI';
       navigate('nodes');
     } else if (action === 'import') {
       importNodes();

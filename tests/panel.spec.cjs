@@ -43,6 +43,8 @@ const tags = [
   };
   snapshot.proxies.proxies.PROXY = { now: tags[0], all: tags };
   snapshot.proxies.proxies.MICROSOFT = { now: tags[2], all: [tags[2], tags[4]] };
+  snapshot.proxies.proxies['Sample-US-Residential'] = { type: 'SOCKS' };
+  snapshot.proxies.proxies.AI = { now: 'Sample-US-Residential', all: ['Sample-US-Residential', 'PROXY'] };
 
   let config = {
     outbounds: [
@@ -181,6 +183,28 @@ const tags = [
   assert.equal(writes, 1);
   assert(config.outbounds.some(o => o.tag === 'Test Node'));
   assert.equal(config.experimental.clash_api.external_controller, '127.0.0.1:9090');
+
+  // Test residential SOCKS5 link import with auto AI + chained PROXY detour (no cycle into PROXY)
+  await page.locator('[data-action="import"]').click();
+  await page.locator('#sheet textarea').fill('socks://sample-token-placeholder:@socks.example.com:7129#Sample-US-ATT-Clean');
+  await page.waitForTimeout(50);
+  assert.equal(await page.locator('#import-ai').isChecked(), true);
+  assert.equal(await page.locator('#import-chain').isChecked(), true);
+  await page.getByText('校验并导入', { exact: true }).click();
+  await page.waitForTimeout(100);
+  assert.equal(writes, 2);
+  const socksNode = config.outbounds.find(o => o.tag === 'Sample-US-ATT-Clean');
+  assert(socksNode && socksNode.type === 'socks' && socksNode.version === '5');
+  assert.equal(socksNode.username, 'sample-token-placeholder');
+  assert.equal(socksNode.password, '');
+  assert.equal(socksNode.detour, 'PROXY');
+  const aiGroup = config.outbounds.find(o => o.tag === 'AI');
+  assert(aiGroup && aiGroup.outbounds.includes('Sample-US-ATT-Clean') && aiGroup.default === 'Sample-US-ATT-Clean');
+  const proxyGroup = config.outbounds.find(o => o.tag === 'PROXY');
+  assert(!proxyGroup.outbounds.includes('Sample-US-ATT-Clean'), 'Chained SOCKS node must not be added to PROXY');
+
+  await page.locator('[data-group="AI"]').click();
+  assert.equal(await page.locator('.node-card').count(), 2);
 
   for (const width of [320, 393, 600]) {
     await page.setViewportSize({ width, height: 852 });
