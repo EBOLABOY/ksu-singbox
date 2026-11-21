@@ -34,7 +34,11 @@ sing-geosite/rule-set/geosite-microsoft.srs
 
   if [ $success -gt 0 ]; then
     echo "Reloading sing-box service..."
-    "${scripts_dir}/box.service" restart >/dev/null 2>&1
+    if [ -x "${scripts_dir}/box.ui" ]; then
+      "${scripts_dir}/box.ui" restart >/dev/null 2>&1
+    else
+      "${scripts_dir}/box.service" restart >/dev/null 2>&1
+    fi
     echo "Rule-sets update completed successfully."
     return 0
   else

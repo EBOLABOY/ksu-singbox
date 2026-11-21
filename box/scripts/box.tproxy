@@ -141,16 +141,47 @@ sync_local_ips() {
   old_state=$(cat "${state_file}" 2>/dev/null)
 
   if [ "${force}" = "--force" ] || [ "${new_state}" != "${old_state}" ] ; then
-    iptables -w 100 -t mangle -F LOCAL_IP_V4 2>/dev/null || true
-    for ip4 in ${v4_list} ; do
-      iptables -w 100 -t mangle -A LOCAL_IP_V4 -d "${ip4}" -j RETURN 2>/dev/null || true
-    done
+    # Atomic update via iptables-restore --noflush (0ms gap); fall back to sequential commands if unavailable.
+    if command -v iptables-restore >/dev/null 2>&1 ; then
+      {
+        printf '*mangle\n-F LOCAL_IP_V4\n'
+        for ip4 in ${v4_list} ; do
+          printf -- '-A LOCAL_IP_V4 -d %s -j RETURN\n' "${ip4}"
+        done
+        printf 'COMMIT\n'
+      } | iptables-restore --noflush --wait=10 2>/dev/null || {
+        iptables -w 100 -t mangle -F LOCAL_IP_V4 2>/dev/null || true
+        for ip4 in ${v4_list} ; do
+          iptables -w 100 -t mangle -A LOCAL_IP_V4 -d "${ip4}" -j RETURN 2>/dev/null || true
+        done
+      }
+    else
+      iptables -w 100 -t mangle -F LOCAL_IP_V4 2>/dev/null || true
+      for ip4 in ${v4_list} ; do
+        iptables -w 100 -t mangle -A LOCAL_IP_V4 -d "${ip4}" -j RETURN 2>/dev/null || true
+      done
+    fi
 
     if [ "${has_v6}" = "1" ] ; then
-      ip6tables -w 100 -t mangle -F LOCAL_IP_V6 2>/dev/null || true
-      for ip6 in ${v6_list} ; do
-        ip6tables -w 100 -t mangle -A LOCAL_IP_V6 -d "${ip6}" -j RETURN 2>/dev/null || true
-      done
+      if command -v ip6tables-restore >/dev/null 2>&1 ; then
+        {
+          printf '*mangle\n-F LOCAL_IP_V6\n'
+          for ip6 in ${v6_list} ; do
+            printf -- '-A LOCAL_IP_V6 -d %s -j RETURN\n' "${ip6}"
+          done
+          printf 'COMMIT\n'
+        } | ip6tables-restore --noflush --wait=10 2>/dev/null || {
+          ip6tables -w 100 -t mangle -F LOCAL_IP_V6 2>/dev/null || true
+          for ip6 in ${v6_list} ; do
+            ip6tables -w 100 -t mangle -A LOCAL_IP_V6 -d "${ip6}" -j RETURN 2>/dev/null || true
+          done
+        }
+      else
+        ip6tables -w 100 -t mangle -F LOCAL_IP_V6 2>/dev/null || true
+        for ip6 in ${v6_list} ; do
+          ip6tables -w 100 -t mangle -A LOCAL_IP_V6 -d "${ip6}" -j RETURN 2>/dev/null || true
+        done
+      fi
     fi
 
     printf '%s' "${new_state}" > "${state_file}.tmp" && mv -f "${state_file}.tmp" "${state_file}"
@@ -208,21 +239,18 @@ start_redirect() {
   fi
 
   if [ "${proxy_mode}" = "blacklist" ] ; then
-    if [ "${#uid_list[@]}" -eq 0 ] ; then
-      ${iptables} -t nat -A BOX_LOCAL -p tcp -j REDIRECT --to-ports ${redir_port}
+    for appid in "${uid_list[@]}" ; do
+      ${iptables} -t nat -A BOX_LOCAL -m owner --uid-owner "${appid}" -j RETURN
+    done
+    for gid in "${gid_list[@]}" ; do
+      ${iptables} -t nat -A BOX_LOCAL -m owner --gid-owner "${gid}" -j RETURN
+    done
+    ${iptables} -t nat -A BOX_LOCAL -p tcp -j REDIRECT --to-ports ${redir_port}
+    if [ "${#uid_list[@]}" -eq 0 ] && [ "${#gid_list[@]}" -eq 0 ] ; then
       log Info "transparent proxy for all apps."
     else
-      for appid in "${uid_list[@]}" ; do
-        ${iptables} -t nat -A BOX_LOCAL -m owner --uid-owner "${appid}" -j RETURN
-      done
-      ${iptables} -t nat -A BOX_LOCAL -p tcp -j REDIRECT --to-ports ${redir_port}
-      log Info "proxy mode: ${proxy_mode}, ${user_packages_list[*]} no transparent proxy."
-    fi
-    if [ "${#gid_list[@]}" -gt 0 ] ; then
-      for gid in "${gid_list[@]}" ; do
-        ${iptables} -t nat -A BOX_LOCAL -m owner --gid-owner "${gid}" -j RETURN
-      done
-      log Info "proxy mode: ${proxy_mode}, GID ${gid_list[*]} no transparent proxy."
+      [ "${#uid_list[@]}" -gt 0 ] && log Info "proxy mode: ${proxy_mode}, ${user_packages_list[*]} no transparent proxy."
+      [ "${#gid_list[@]}" -gt 0 ] && log Info "proxy mode: ${proxy_mode}, GID ${gid_list[*]} no transparent proxy."
     fi
   elif [ "${proxy_mode}" = "whitelist" ] ; then
     if [ "${#uid_list[@]}" -gt 0 ] ; then
@@ -405,23 +433,19 @@ start_tproxy() {
 
   # 7. App UID/GID selection
   if [ "${proxy_mode}" = "blacklist" ] ; then
-    if [ "${#uid_list[@]}" -eq 0 ] ; then
-      ${iptables} -t mangle -A BOX_LOCAL -p tcp -j MARK --set-xmark ${mark_id}
-      ${iptables} -t mangle -A BOX_LOCAL -p udp -j MARK --set-xmark ${mark_id}
+    for appid in "${uid_list[@]}" ; do
+      ${iptables} -t mangle -A BOX_LOCAL -m owner --uid-owner "${appid}" -j RETURN
+    done
+    for gid in "${gid_list[@]}" ; do
+      ${iptables} -t mangle -A BOX_LOCAL -m owner --gid-owner "${gid}" -j RETURN
+    done
+    ${iptables} -t mangle -A BOX_LOCAL -p tcp -j MARK --set-xmark ${mark_id}
+    ${iptables} -t mangle -A BOX_LOCAL -p udp -j MARK --set-xmark ${mark_id}
+    if [ "${#uid_list[@]}" -eq 0 ] && [ "${#gid_list[@]}" -eq 0 ] ; then
       log Info "transparent proxy for all apps."
     else
-      for appid in "${uid_list[@]}" ; do
-        ${iptables} -t mangle -A BOX_LOCAL -m owner --uid-owner "${appid}" -j RETURN
-      done
-      if [ "${#gid_list[@]}" -gt 0 ] ; then
-        for gid in "${gid_list[@]}" ; do
-          ${iptables} -t mangle -A BOX_LOCAL -m owner --gid-owner "${gid}" -j RETURN
-        done
-        log Info "proxy mode: ${proxy_mode}, GID ${gid_list[*]} no transparent proxy."
-      fi
-      ${iptables} -t mangle -A BOX_LOCAL -p tcp -j MARK --set-xmark ${mark_id}
-      ${iptables} -t mangle -A BOX_LOCAL -p udp -j MARK --set-xmark ${mark_id}
-      log Info "proxy mode: ${proxy_mode}, ${user_packages_list[*]} no transparent proxy."
+      [ "${#uid_list[@]}" -gt 0 ] && log Info "proxy mode: ${proxy_mode}, ${user_packages_list[*]} no transparent proxy."
+      [ "${#gid_list[@]}" -gt 0 ] && log Info "proxy mode: ${proxy_mode}, GID ${gid_list[*]} no transparent proxy."
     fi
   elif [ "${proxy_mode}" = "whitelist" ] ; then
     if [ "${#uid_list[@]}" -gt 0 ] ; then
@@ -598,7 +622,7 @@ if [ "${proxy_mode}" = "core" ] ; then
   iptables="ip6tables -w 100" && stop_tproxy >> /dev/null 2>&1
   iptables="iptables -w 100" && stop_redirect >> /dev/null 2>&1
   log Info "proxy_mode: ${proxy_mode}, disable transparent proxy."
-  return 0
+  exit 0
 fi
 
 case "$1" in
@@ -619,7 +643,7 @@ case "$1" in
     log Warn "clean up ip(6)tables transparent proxy rules done."
     enable_ipv6
     log Warn "enable IPv6."
-    return 0
+    exit 0
     ;;
   renew)
     log Warn "cleaning up ip(6)tables transparent proxy rules."

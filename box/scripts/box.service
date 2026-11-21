@@ -1,9 +1,11 @@
 #!/system/bin/sh
 
-scripts=$(realpath $0)
-scripts_dir=$(dirname ${scripts})
+export PATH="/data/adb/ksu/bin:/data/adb/magisk:/data/adb/ap/bin:/system/bin:$PATH"
 
-source ${scripts_dir}/box.config
+scripts=$(realpath "$0")
+scripts_dir=$(dirname "${scripts}")
+
+source "${scripts_dir}/box.config"
 
 log() {
   case "$1" in
@@ -19,8 +21,12 @@ log() {
   esac
 }
 
+live_pids() {
+  pidof "${bin_name}" 2>/dev/null
+}
+
 display() {
-  local pid=$(pidof ${bin_name})
+  local pid=$(live_pids | awk '{print $1}')
   if [ -n "${pid}" ] ; then
     log Info "${bin_name} is running. ( PID: ${pid} )"
     return 0
@@ -31,26 +37,24 @@ display() {
 }
 
 core_alive() {
-  local pid=$(pidof ${bin_name})
+  local pid=$(live_pids | awk '{print $1}')
   if [ -z "${pid}" ] ; then
     return 1
   fi
-  if [ ! -f ${pid_file} ] ; then
-    echo -n ${pid} > ${pid_file}
-  fi
+  echo -n "${pid}" > "${pid_file}" 2>/dev/null || true
   return 0
 }
 
 find_netuser() {
-  box_user=$(busybox id -u ${box_user_group%:*} 2>/dev/null)
-  box_group=$(busybox id -g ${box_user_group#*:} 2>/dev/null)
+  box_user=$(busybox id -u "${box_user_group%:*}" 2>/dev/null)
+  box_group=$(busybox id -g "${box_user_group#*:}" 2>/dev/null)
   if [ -z "${box_user}" ] || [ -z "${box_group}" ] ; then
     box_user_group="root:net_admin"
   fi
 }
 
 check_bin() {
-  if [ ! -x ${bin_path} ] ; then
+  if [ ! -x "${bin_path}" ] ; then
     log Error "can't found ${bin_path} or no execute permission"
     return 1
   fi
@@ -58,9 +62,21 @@ check_bin() {
   return 0
 }
 
+rotate_core_log() {
+  local log_file="${run_path}/${bin_name}.log"
+  if [ -f "${log_file}" ] ; then
+    local sz=$(wc -c < "${log_file}" 2>/dev/null || echo 0)
+    if [ "${sz:-0}" -gt 1048576 ] ; then
+      mv -f "${log_file}" "${log_file}.old" 2>/dev/null || true
+    fi
+  fi
+}
+
 start_service() {
+  mkdir -p "${run_path}" 2>/dev/null || true
+
   if core_alive ; then
-    log Warn "${bin_name} service is running. ( PID: $(cat ${pid_file}) )"
+    log Warn "${bin_name} service is running. ( PID: $(cat "${pid_file}") )"
     return 0
   fi
 
@@ -68,15 +84,37 @@ start_service() {
     return 1
   fi
 
-  ulimit -SHn 1000000
-  if ${bin_path} check -D ${box_path}/${bin_name} > ${run_path}/check.log 2>&1 ; then
+  rotate_core_log
+
+  ulimit -SHn 1000000 2>/dev/null || true
+  if "${bin_path}" check -D "${box_path}/${bin_name}" > "${run_path}/check.log" 2>&1 ; then
     log Info "starting ${bin_name} service (low-power optimized)."
-    nohup busybox setuidgid ${box_user_group} /system/bin/env GOMEMLIMIT=36MiB GOGC=30 GOMAXPROCS=2 ${bin_path} run -D ${box_path}/${bin_name} > /dev/null 2> ${run_path}/error_${bin_name}.log &
+    nohup busybox setuidgid "${box_user_group}" /system/bin/env GOMEMLIMIT=36MiB GOGC=30 GOMAXPROCS=2 "${bin_path}" run -D "${box_path}/${bin_name}" > /dev/null 2> "${run_path}/error_${bin_name}.log" < /dev/null &
     local new_pid=$!
-    echo -n ${new_pid} > ${pid_file}
+    echo -n "${new_pid}" > "${pid_file}"
+
     # Escape app cgroup freezer & protect from Android LMK
-    echo ${new_pid} > /sys/fs/cgroup/cgroup.procs 2>/dev/null || echo ${new_pid} > /acct/cgroup.procs 2>/dev/null
-    echo -900 > /proc/${new_pid}/oom_score_adj 2>/dev/null
+    echo "${new_pid}" > /sys/fs/cgroup/cgroup.procs 2>/dev/null || echo "${new_pid}" > /acct/cgroup.procs 2>/dev/null || true
+    echo -900 > "/proc/${new_pid}/oom_score_adj" 2>/dev/null || true
+
+    # Verify process did not crash immediately on startup
+    local wait_i=0
+    while [ "${wait_i}" -lt 5 ] ; do
+      sleep 0.1
+      if ! kill -0 "${new_pid}" 2>/dev/null ; then
+        rm -f "${pid_file}"
+        log Error "${bin_name} exited immediately after start. Check ${run_path}/error_${bin_name}.log"
+        return 1
+      fi
+      wait_i=$((wait_i + 1))
+    done
+
+    local actual_pid=$(live_pids | awk '{print $1}')
+    if [ -n "${actual_pid}" ] ; then
+      echo -n "${actual_pid}" > "${pid_file}"
+      echo "${actual_pid}" > /sys/fs/cgroup/cgroup.procs 2>/dev/null || echo "${actual_pid}" > /acct/cgroup.procs 2>/dev/null || true
+      echo -900 > "/proc/${actual_pid}/oom_score_adj" 2>/dev/null || true
+    fi
     return 0
   else
     log Error "configuration check failed, please check the ${run_path}/check.log file."
@@ -85,19 +123,44 @@ start_service() {
 }
 
 stop_service() {
-  if ! core_alive ; then
+  local pids=$(live_pids)
+  if [ -z "${pids}" ] && [ -f "${pid_file}" ] ; then
+    local saved=$(cat "${pid_file}" 2>/dev/null)
+    if [ -n "${saved}" ] && [ -r "/proc/${saved}/cmdline" ] && tr '\0' ' ' < "/proc/${saved}/cmdline" | grep -q "${bin_name}" ; then
+      pids="${saved}"
+    fi
+  fi
+
+  if [ -z "${pids}" ] ; then
+    rm -f "${pid_file}"
     log Warn "${bin_name} service is already stopped."
     return 0
   fi
 
-  local pid=$(cat ${pid_file})
   log Info "stopping ${bin_name} service."
-  kill -15 ${pid} 2>/dev/null
-  sleep 1
-  if kill -0 ${pid} 2>/dev/null ; then
-    kill -9 ${pid} 2>/dev/null
-  fi
-  rm -f ${pid_file}
+  for p in ${pids} ; do
+    kill -15 "${p}" 2>/dev/null || true
+  done
+
+  # Wait up to 3s in 0.1s increments so cache.db flushes cleanly without unnecessary delay
+  local wait_i=0
+  while [ "${wait_i}" -lt 30 ] ; do
+    local alive=""
+    for p in ${pids} ; do
+      kill -0 "${p}" 2>/dev/null && alive=1
+    done
+    [ -z "${alive}" ] && break
+    sleep 0.1
+    wait_i=$((wait_i + 1))
+  done
+
+  for p in ${pids} ; do
+    if kill -0 "${p}" 2>/dev/null ; then
+      kill -9 "${p}" 2>/dev/null || true
+    fi
+  done
+
+  rm -f "${pid_file}"
   return 0
 }
 
@@ -110,7 +173,6 @@ case "$1" in
     ;;
   restart)
     stop_service
-    sleep 1
     start_service
     ;;
   status)

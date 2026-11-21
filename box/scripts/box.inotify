@@ -14,7 +14,19 @@ monitor_dir=$2
 monitor_file=$3
 
 stop_smart_home() {
-  for pid in $(ps -A -o PID,ARGS 2>/dev/null | awk '$2 ~ /(^|\/)sh$/ && $3=="/data/adb/box/scripts/box.smart_home.sh" {print $1}') ; do
+  local targets=""
+  if [ -s "${run_path}/smart_home.pid" ] ; then
+    local spid=$(cat "${run_path}/smart_home.pid" 2>/dev/null)
+    if [ -n "${spid}" ] && [ -r "/proc/${spid}/cmdline" ] && tr '\0' ' ' < "/proc/${spid}/cmdline" | grep -q 'box.smart_home.sh' ; then
+      targets="${spid}"
+    fi
+  fi
+  local ps_pids=$(ps -A -o PID,ARGS 2>/dev/null | awk '$2 ~ /(^|\/)sh$/ && $3=="/data/adb/box/scripts/box.smart_home.sh" {print $1}')
+  for pid in ${targets} ${ps_pids} ; do
+    [ -n "${pid}" ] || continue
+    kill -0 "${pid}" 2>/dev/null || continue
+    local children=$(ps -A -o PID,PPID 2>/dev/null | awk -v parent="${pid}" '$2==parent {print $1}')
+    [ -z "${children}" ] || kill ${children} 2>/dev/null || true
     kill "${pid}" 2>/dev/null || true
   done
 }

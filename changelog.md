@@ -6,6 +6,8 @@
 - Kept `accept_ra=2` in `enable_ipv6()` so IPv6 Router Advertisements continue working while hotspot forwarding is enabled.
 - Reordered `config.json` route rules so `sniff`/`hijack-dns` run before `Direct` mode, `ip_is_private` runs before `Global` mode, and `udp/443` rejection runs after `geoip-cn`/`geosite-cn` so domestic QUIC works properly.
 - Fixed module lifecycle consistency in `start.sh`, `box.inotify`, and `box.ui` (auto-generate `api.secret` on fresh installs, avoid running `box.smart_home.sh` or orphan `sing-box` when disabled, and keep TPROXY rules in sync on restart).
+- Redesigned KernelSU WebUI with native Material 3 styling, 2-column node cards, and responsive light/dark themes.
+- Hardened and optimized backend scripts: atomic `iptables-restore --noflush` IP sync, low-power `box.smart_home.sh` (inline IP pre-check, Wi-Fi SSID caching, write-on-change `smart_home.json`, lock-only-on-write, cgroup freezer escape), automatic log rotation (`sing-box.log` / `smart_home.log`), graceful `box.service` start/stop verification, `gid_list` blacklist fix, temp config cleanup in `box.ui`, and full TPROXY/service teardown in `uninstall.sh`.
 
 # v1.3.0
 
