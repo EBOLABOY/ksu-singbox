@@ -113,6 +113,8 @@ start_service() {
     if [ -n "${actual_pid}" ] ; then
       echo -n "${actual_pid}" > "${pid_file}"
       echo "${actual_pid}" > /sys/fs/cgroup/cgroup.procs 2>/dev/null || echo "${actual_pid}" > /acct/cgroup.procs 2>/dev/null || true
+      # Leave the per-app memcg (swappiness 100) so the proxy core is not swapped out aggressively.
+      [ -w /dev/memcg/cgroup.procs ] && echo "${actual_pid}" > /dev/memcg/cgroup.procs 2>/dev/null || true
       echo -900 > "/proc/${actual_pid}/oom_score_adj" 2>/dev/null || true
     fi
     return 0

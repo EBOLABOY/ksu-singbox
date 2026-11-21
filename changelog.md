@@ -1,3 +1,9 @@
+# v1.3.2
+
+- Prevented `customize.sh` from downgrading a manually updated `sing-box` binary on upgrade (semver-aware replacement).
+- Moved `sing-box` out of `/apps` memcg (`swappiness=100`) into root `/dev/memcg` (`swappiness=30`) in `box.service` to prevent aggressive swapping under Android memory pressure.
+- Cleaned up `box.ui localize` stderr output from `sing-box merge` and updated version metadata consistently across `module.prop` and WebUI.
+
 # v1.3.1
 
 - Fixed hotspot/tethering domestic website access failure caused by IPv6 SYN-ACK loopback in `BOX_LOCAL` (added `-o <ap>` bypass for hotspot interfaces).

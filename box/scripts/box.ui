@@ -167,7 +167,7 @@ config-get) cat "$CFG" ;;
 localize)
     lock_write
     write_api_overlay
-    "$BOX/bin/sing-box" merge "$RUN/panel-local.json" -D "$BOX/sing-box" -c "$CFG" -c "$RUN/panel-overlay.json" >/dev/null || fail '无法合并本机管理配置'
+    "$BOX/bin/sing-box" merge "$RUN/panel-local.json" -D "$BOX/sing-box" -c "$CFG" -c "$RUN/panel-overlay.json" > "$RUN/panel-check.log" 2>&1 || { cat "$RUN/panel-check.log" >&2; fail '无法合并本机管理配置'; }
     "$BOX/bin/sing-box" check -D "$BOX/sing-box" -c "$RUN/panel-local.json" > "$RUN/panel-check.log" 2>&1 || fail '本机管理配置校验失败'
     cp -p "$CFG" "$CFG.panel-backup"
     cp "$RUN/panel-local.json" "$CFG.tmp" && mv -f "$CFG.tmp" "$CFG" || fail '无法写入本机管理配置'

@@ -21,11 +21,21 @@ if [ -d /data/adb/box ]; then
     cp -f "$file" /data/adb/box/scripts/
   done
   rm -f /data/adb/box/scripts/net.inotify
-  if [ -f "$MODPATH/box/bin/sing-box" ]; then
-    mkdir -p /data/adb/box/bin
-    cp -f "$MODPATH/box/bin/sing-box" /data/adb/box/bin/sing-box.new
-    chmod 0700 /data/adb/box/bin/sing-box.new
-    mv -f /data/adb/box/bin/sing-box.new /data/adb/box/bin/sing-box
+  # Update the bundled core only when it is newer than the installed one (never downgrade a manually upgraded core).
+  bundled="$MODPATH/box/bin/sing-box"
+  target=/data/adb/box/bin/sing-box
+  if [ -f "$bundled" ]; then
+    chmod 0700 "$bundled"
+    new_ver=$("$bundled" version 2>/dev/null | awk 'NR==1{print $3}')
+    old_ver=""
+    [ -x "$target" ] && old_ver=$("$target" version 2>/dev/null | awk 'NR==1{print $3}')
+    if [ -n "$new_ver" ] && { [ -z "$old_ver" ] || awk -v a="${new_ver%%-*}" -v b="${old_ver%%-*}" 'BEGIN{na=split(a,x,".");nb=split(b,y,".");n=na>nb?na:nb;for(i=1;i<=n;i++){if(x[i]+0>y[i]+0)exit 0;if(x[i]+0<y[i]+0)exit 1}exit 1}'; }; then
+      mkdir -p /data/adb/box/bin
+      cp -f "$bundled" "$target.new" && chmod 0700 "$target.new" && mv -f "$target.new" "$target"
+      ui_print "- 更新 sing-box 内核 ${old_ver:-无} -> ${new_ver}"
+    else
+      ui_print "- 保留现有 sing-box 内核 ${old_ver:-未知}"
+    fi
   fi
   rm -rf "$MODPATH/box"
 else
