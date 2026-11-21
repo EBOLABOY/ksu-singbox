@@ -19,13 +19,16 @@ done
 ${scripts_dir}/start.sh
 )&
 
+for pid in $(pidof inotifyd); do
+  if tr '\0' ' ' < "/proc/$pid/cmdline" | grep -q '/box.inotify'; then kill "$pid" 2>/dev/null || true; fi
+done
 inotifyd ${scripts_dir}/box.inotify ${module_dir} > /dev/null 2>&1 &
 
 while [ ! -f /data/misc/net/rt_tables ] ; do
   sleep 3
 done
 
-net_dir="/data/misc/net"
-inotifyd ${scripts_dir}/net.inotify ${net_dir} > /dev/null 2>&1 &
+# Address rules retain the existing TPROXY lifecycle. The panel never runs
+# net.inotify, whose legacy writer is not safe to run for every filesystem event.
 
-[ -x /data/adb/box/scripts/box.smart_home.sh ] && /data/adb/box/scripts/box.smart_home.sh >/dev/null 2>&1 &
+# start.sh is the single startup entry for the home coordinator.

@@ -1,81 +1,80 @@
 #!/system/bin/sh
-
-# Optional external config: /data/adb/box/smart_home.conf
-CONF_FILE="/data/adb/box/smart_home.conf"
-[ -f "$CONF_FILE" ] && . "$CONF_FILE"
-
-ROUTER_GW="${ROUTER_GW:-192.168.100.1}"
-HOME_SSID="${HOME_SSID:-195iot}"
-CLASH_API="http://127.0.0.1:9090"
-RUN_DIR="/data/adb/box/run"
-PID_FILE="${RUN_DIR}/smart_home.pid"
-STATE_FILE="${RUN_DIR}/smart_home.json"
-LOG_FILE="${RUN_DIR}/smart_home.log"
-CONFIG_FILE="/data/adb/box/sing-box/config.json"
-
-mkdir -p "${RUN_DIR}"
-echo $$ > "${PID_FILE}"
-LAST_LOCATION="unknown"
-
-is_at_home() {
-  # 1. Check if default gateway matches router IP
-  if ip route show table all 2>/dev/null | grep -q "default via ${ROUTER_GW}"; then
-    return 0
-  fi
-  # 2. Check if connected Wi-Fi SSID matches home SSID
-  if cmd wifi status 2>/dev/null | grep -q "SSID: \"${HOME_SSID}\""; then
-    return 0
-  fi
-  return 1
+# Android-compatible process locks never leak into child proxy processes.
+export PATH="/data/adb/ksu/bin:/system/bin:$PATH"
+BOX=/data/adb/box; RUN="$BOX/run"; BB=/data/adb/ksu/bin/busybox
+API_SECRET_FILE="$BOX/api.secret"
+mkdir -p "$RUN"; umask 077
+single="$RUN/smart_home.lockdir"
+if ! mkdir "$single" 2>/dev/null; then
+    owner=$(cat "$single/pid" 2>/dev/null)
+    [ -n "$owner" ] && kill -0 "$owner" 2>/dev/null && exit 0
+    rm -f "$single/pid"; rmdir "$single" 2>/dev/null || exit 0
+    mkdir "$single" 2>/dev/null || exit 0
+fi
+echo $$ > "$single/pid"
+echo $$ > "$RUN/smart_home.pid"
+cleanup() {
+    if [ "$(cat "$RUN/panel-write.lockdir/pid" 2>/dev/null)" = "$$" ]; then rm -f "$RUN/panel-write.lockdir/pid"; rmdir "$RUN/panel-write.lockdir" 2>/dev/null || true; fi
+    rm -f "$single/pid" "$RUN/smart_home.pid"; rmdir "$single" 2>/dev/null || true
 }
-
-update_state_file() {
-  cat << EOF > "${STATE_FILE}.tmp"
-{
-  "location": "$1",
-  "gateway": "$2",
-  "updated_at": "$(date +'%Y-%m-%d %H:%M:%S')"
+trap cleanup EXIT
+trap 'exit 0' INT TERM
+json_string() {
+    printf '%s' "$1" | "$BB" awk 'BEGIN{ORS="";printf "\""}{if(NR>1)printf "\\n";gsub(/\\/,"\\\\");gsub(/\"/,"\\\"");gsub(/\t/,"\\t");gsub(/\r/,"\\r");printf "%s",$0}END{printf "\""}'
 }
-EOF
-  mv -f "${STATE_FILE}.tmp" "${STATE_FILE}"
+api() {
+    api_secret=$(cat "$API_SECRET_FILE" 2>/dev/null) || return 1
+    [ -n "$api_secret" ] || return 1
+    curl --noproxy '*' -fsS --connect-timeout 1 --max-time 3 -H "Authorization: Bearer $api_secret" "$@"
 }
-
-sync_mode() {
-  CURRENT_GW=$(ip route show table all 2>/dev/null | awk '/default via/ {print $3}' | head -n 1)
-  
-  if is_at_home; then
-    NEW_LOCATION="home"
-  else
-    NEW_LOCATION="away"
-  fi
-
-  if [ "$NEW_LOCATION" != "$LAST_LOCATION" ]; then
-    NOW=$(date +'%Y-%m-%d %H:%M:%S')
-    if [ "$NEW_LOCATION" = "home" ]; then
-      # At home: Switch to Direct mode
-      curl -s -X PATCH "${CLASH_API}/configs" \
-           -H "Content-Type: application/json" \
-           -d '{"mode":"Direct"}' >/dev/null 2>&1
-      echo "[${NOW}] 🏠 检测到家庭网络 (${ROUTER_GW} / ${HOME_SSID})，已自动切换为【全量直连】(由软路由处理代理)" >> "${LOG_FILE}"
-    else
-      # Away: Switch to Rule mode
-      curl -s -X PATCH "${CLASH_API}/configs" \
-           -H "Content-Type: application/json" \
-           -d '{"mode":"Rule"}' >/dev/null 2>&1
-      echo "[${NOW}] 🚗 检测到移动/外网环境，已自动恢复【规则代理】(手机底层内核透明接管)" >> "${LOG_FILE}"
-    fi
-    LAST_LOCATION="${NEW_LOCATION}"
-    update_state_file "${NEW_LOCATION}" "${CURRENT_GW:-cellular}"
-  fi
-}
-
-# Initial check
-sync_mode
-
-# Netlink event listener loop
 while true; do
-  # Wait for route change event from kernel netlink
-  ip monitor route 2>/dev/null | head -n 1 >/dev/null
-  sync_mode
-  sleep 3
+    # Keep LOCAL_IP_V4 / LOCAL_IP_V6 synchronized with dynamic Wi-Fi/cellular/hotspot addresses.
+    [ -x "$BOX/scripts/box.tproxy" ] && "$BOX/scripts/box.tproxy" sync-ips >/dev/null 2>&1 || true
+
+    lock="$RUN/panel-write.lockdir"
+    if ! mkdir "$lock" 2>/dev/null; then
+        owner=$(cat "$lock/pid" 2>/dev/null)
+        if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then rm -f "$lock/pid"; rmdir "$lock" 2>/dev/null || true; fi
+        sleep 2; continue
+    fi
+    echo $$ > "$lock/pid"
+    AUTO_SWITCH=1; ROUTER_GW=192.168.100.1; HOME_SSID=''
+    [ ! -f "$BOX/smart_home.conf" ] || . "$BOX/smart_home.conf"
+    route=$(ip -4 route get 1.1.1.1 2>/dev/null)
+    iface=$(printf '%s' "$route" | awk '{for(i=1;i<NF;i++)if($i=="dev"){print $(i+1);exit}}')
+    gateway=$(printf '%s' "$route" | awk '{for(i=1;i<NF;i++)if($i=="via"){print $(i+1);exit}}')
+    ssid=''
+    case "$iface" in wlan*) ssid=$(cmd wifi status 2>/dev/null | sed -n 's/^Wifi is connected to "\(.*\)"$/\1/p' | head -n 1) ;; esac
+    location=away
+    case "$iface" in wlan*)
+        if [ "$gateway" = "$ROUTER_GW" ] || { [ -n "$HOME_SSID" ] && [ "$ssid" = "$HOME_SSID" ]; }; then location=home; fi ;;
+    esac
+    desired=Rule; [ "$location" != home ] || desired=Direct
+    applied=false
+    response=$(api http://127.0.0.1:9090/configs 2>/dev/null)
+    mode=$(printf '%s' "$response" | sed -n 's/.*"mode"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+    if [ "$AUTO_SWITCH" = 1 ] && [ -n "$mode" ]; then
+        if [ "$mode" != "$desired" ]; then
+            if api -X PATCH -H 'Content-Type: application/json' --data "{\"mode\":\"$desired\"}" http://127.0.0.1:9090/configs >/dev/null 2>&1; then mode=$desired; fi
+        fi
+        [ "$mode" != "$desired" ] || applied=true
+    fi
+    {
+        printf '{"location":'; json_string "$location"
+        printf ',"gateway":'; json_string "$gateway"
+        printf ',"interface":'; json_string "$iface"
+        printf ',"ssid":'; json_string "$ssid"
+        printf ',"mode":'; json_string "$mode"
+        printf ',"applied":%s,"automatic":%s,"updated_at":' "$applied" "$([ "$AUTO_SWITCH" = 1 ] && echo true || echo false)"
+        json_string "$(date '+%Y-%m-%d %H:%M:%S')"; printf '}\n'
+    } > "$RUN/smart_home.json.tmp"
+    mv -f "$RUN/smart_home.json.tmp" "$RUN/smart_home.json"
+    last=$(cat "$RUN/smart_home.last" 2>/dev/null)
+    state="$location/$AUTO_SWITCH/$mode/$applied"
+    if [ "$state" != "$last" ]; then
+        printf '[%s] network=%s interface=%s automatic=%s mode=%s applied=%s\n' "$(date '+%F %T')" "$location" "$iface" "$AUTO_SWITCH" "$mode" "$applied" >> "$RUN/smart_home.log"
+        printf '%s\n' "$state" > "$RUN/smart_home.last"
+    fi
+    rm -f "$lock/pid"; rmdir "$lock" 2>/dev/null || true
+    sleep 15
 done

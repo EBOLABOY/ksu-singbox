@@ -80,7 +80,7 @@
         },
         "reality": {
           "enabled": true,
-          "public_key": "YourPublicKeyHere",
+          "public_key": "PlaceholderRealityPublicKey01_000000000000A",
           "short_id": "01234567"
         }
       }
@@ -115,14 +115,11 @@
         "action": "hijack-dns"
       },
       {
-        "network": "udp",
-        "port": [
-          443
-        ],
-        "outbound": "block"
+        "clash_mode": "Direct",
+        "outbound": "direct"
       },
       {
-        "clash_mode": "Direct",
+        "ip_is_private": true,
         "outbound": "direct"
       },
       {
@@ -130,15 +127,16 @@
         "outbound": "PROXY"
       },
       {
-        "ip_is_private": true,
-        "outbound": "direct"
-      },
-      {
         "rule_set": [
           "geoip-cn",
           "geosite-cn"
         ],
         "outbound": "direct"
+      },
+      {
+        "network": "udp",
+        "port": 443,
+        "action": "reject"
       }
     ],
     "rule_set": [
@@ -161,8 +159,7 @@
   },
   "experimental": {
     "clash_api": {
-      "external_controller": "0.0.0.0:9090",
-      "external_ui": "/data/adb/box/sing-box/ui",
+      "external_controller": "127.0.0.1:9090",
       "default_mode": "Rule"
     },
     "cache_file": {

@@ -14,6 +14,7 @@ include_files = [
     "uninstall.sh",
     "LICENSE",
     "README.md",
+    "README_zh.md",
 ]
 
 print(f"Packing KernelSU module into {output_zip}...")
@@ -30,7 +31,7 @@ with zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as 
         if os.path.exists(dp):
             for root, dirs, files in os.walk(dp):
                 for file in files:
-                    if file.endswith(".zip") or file.endswith(".tmp") or file.endswith(".bak"):
+                    if file.endswith(".zip") or file.endswith(".tmp") or file.endswith(".bak") or "__pycache__" in root:
                         continue
                     full_p = os.path.join(root, file)
                     rel_p = os.path.relpath(full_p, dir_path)

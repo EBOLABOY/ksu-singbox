@@ -133,15 +133,7 @@ case "$1" in
     PID=$(busybox pidof sing-box 2>/dev/null)
     IPV6_ADDR=$(ip -6 addr show scope global 2>/dev/null | awk '/inet6/ {print $2}' | head -n 1)
 
-    # Auto-healing: Ensure current IPv6 is in LOCAL_IP_V6 bypass chain
-    if [ -n "$IPV6_ADDR" ]; then
-      CURRENT_IP_PREFIX=$(echo "$IPV6_ADDR" | cut -d/ -f1)
-      if ! ip6tables -t mangle -S LOCAL_IP_V6 2>/dev/null | grep -q "$CURRENT_IP_PREFIX"; then
-        ip6tables -w 100 -t mangle -I LOCAL_IP_V6 1 -d "$IPV6_ADDR" -j RETURN 2>/dev/null
-        ip6tables -w 100 -t mangle -I BOX_EXTERNAL 1 -d "$IPV6_ADDR" -j RETURN 2>/dev/null
-        ip6tables -w 100 -t mangle -I BOX_LOCAL 1 -d "$IPV6_ADDR" -j RETURN 2>/dev/null
-      fi
-    fi
+    # Status is read-only; network coordination never runs from UI polling.
 
     # Accurate physical resident memory (VmRSS) in MB
     MEM="0"

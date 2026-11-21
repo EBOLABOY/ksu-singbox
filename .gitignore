@@ -5,3 +5,5 @@
 box/sing-box/cache.db
 box/run/*
 !box/run/.gitkeep
+artifacts/
+tests/panel-live.cjs

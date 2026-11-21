@@ -1,31 +1,40 @@
 #!/system/bin/sh
 
-scripts=$(realpath $0)
-scripts_dir=$(dirname ${scripts})
+scripts=$(realpath "$0")
+scripts_dir=$(dirname "${scripts}")
 
-source ${scripts_dir}/box.config
+source "${scripts_dir}/box.config"
 
 service_path="${scripts_dir}/box.service"
 tproxy_path="${scripts_dir}/box.tproxy"
+smart_home_path="${scripts_dir}/box.smart_home.sh"
 
 events=$1
 monitor_dir=$2
 monitor_file=$3
 
+stop_smart_home() {
+  for pid in $(ps -A -o PID,ARGS 2>/dev/null | awk '$2 ~ /(^|\/)sh$/ && $3=="/data/adb/box/scripts/box.smart_home.sh" {print $1}') ; do
+    kill "${pid}" 2>/dev/null || true
+  done
+}
+
 service_control() {
-  if [ ! -f ${box_path}/manual ] ; then
+  if [ ! -f "${box_path}/manual" ] ; then
     if [ "${monitor_file}" = "disable" ] ; then
       if [ "${events}" = "d" ] ; then
-        ${service_path} start >> ${run_path}/run.log 2>> ${run_path}/run_error.log && \
-        ${tproxy_path} enable >> ${run_path}/run.log 2>> ${run_path}/run_error.log
+        "${service_path}" start >> "${run_path}/run.log" 2>> "${run_path}/run_error.log" && \
+        "${tproxy_path}" enable >> "${run_path}/run.log" 2>> "${run_path}/run_error.log"
+        [ -x "${smart_home_path}" ] && nohup "${smart_home_path}" >/dev/null 2>&1 < /dev/null &
       elif [ "${events}" = "n" ] ; then
-        ${tproxy_path} disable >> ${run_path}/run.log 2>> ${run_path}/run_error.log && \
-        ${service_path} stop >> ${run_path}/run.log 2>> ${run_path}/run_error.log
+        stop_smart_home
+        "${tproxy_path}" disable >> "${run_path}/run.log" 2>> "${run_path}/run_error.log"
+        "${service_path}" stop >> "${run_path}/run.log" 2>> "${run_path}/run_error.log"
       fi
     fi
   fi
 }
 
-mkdir -p ${run_path}
+mkdir -p "${run_path}"
 
 service_control

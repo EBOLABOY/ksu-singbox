@@ -1,0 +1,186 @@
+#!/system/bin/sh
+# KernelSU panel bridge. The page never connects to a network management API.
+export PATH="/data/adb/ksu/bin:/data/adb/magisk:/system/bin:$PATH"
+BOX=${BOX_UI_ROOT:-/data/adb/box}
+RUN="$BOX/run"
+CFG="$BOX/sing-box/config.json"
+BB=/data/adb/ksu/bin/busybox
+[ -x "$BB" ] || BB=busybox
+API_SECRET_FILE="$BOX/api.secret"
+mkdir -p "$RUN"
+umask 077
+
+fail() { printf '%s\n' "$*" >&2; exit 1; }
+quote_json() {
+    printf '%s' "$1" | "$BB" awk 'BEGIN { ORS=""; printf "\"" } { if (NR>1) printf "\\n"; gsub(/\\/,"\\\\"); gsub(/\"/,"\\\""); gsub(/\r/,"\\r"); gsub(/\t/,"\\t"); printf "%s",$0 } END { printf "\"" }'
+}
+decode() { printf '%s' "$1" | "$BB" base64 -d; }
+ensure_secret() {
+    if [ ! -s "$API_SECRET_FILE" ]; then
+        "$BB" od -An -tx1 -N 32 /dev/urandom 2>/dev/null | tr -d ' \n' > "$API_SECRET_FILE.tmp" \
+            || date +%s%N | "$BB" sha256sum | awk '{print $1}' > "$API_SECRET_FILE.tmp"
+        chmod 600 "$API_SECRET_FILE.tmp" 2>/dev/null || true
+        mv -f "$API_SECRET_FILE.tmp" "$API_SECRET_FILE"
+    fi
+}
+api() {
+    [ -s "$API_SECRET_FILE" ] || fail 'API secret missing'
+    api_secret=$(cat "$API_SECRET_FILE") || fail '无法读取 API secret'
+    [ -n "$api_secret" ] || fail 'API secret 为空'
+    curl --noproxy '*' -fsS --connect-timeout 2 --max-time 8 -H "Authorization: Bearer $api_secret" "$@"
+}
+write_api_overlay() {
+    ensure_secret
+    [ -s "$API_SECRET_FILE" ] || fail 'API secret missing'
+    api_secret=$(cat "$API_SECRET_FILE") || fail '无法读取 API secret'
+    [ -n "$api_secret" ] || fail 'API secret 为空'
+    {
+        printf '%s' '{"experimental":{"clash_api":{"external_controller":"127.0.0.1:9090","secret":'
+        quote_json "$api_secret"
+        printf '%s\n' ',"external_ui":"","external_ui_download_url":""}}}'
+    } > "$RUN/panel-overlay.json"
+}
+module_disabled() {
+    [ -f "$BOX/manual" ] && return 0
+    [ -f /data/adb/modules/box4/disable ] && return 0
+    [ -f /data/adb/modules/ksu-singbox/disable ] && return 0
+    return 1
+}
+ensure_tproxy() {
+    [ -x "$BOX/scripts/box.tproxy" ] || return 0
+    if module_disabled; then
+        return 0
+    fi
+    if iptables -w 100 -t mangle -S BOX_EXTERNAL >/dev/null 2>&1; then
+        "$BOX/scripts/box.tproxy" sync-ips --force >> "$RUN/panel-service.log" 2>&1 || true
+    else
+        "$BOX/scripts/box.tproxy" enable >> "$RUN/panel-service.log" 2>&1 || true
+    fi
+}
+load_home() {
+    AUTO_SWITCH=1; ROUTER_GW=192.168.100.1; HOME_SSID=''
+    [ ! -f "$BOX/smart_home.conf" ] || . "$BOX/smart_home.conf"
+}
+save_home() {
+    case "$1" in 0|1) ;; *) fail '自动切换值无效' ;; esac
+    printf '%s\n' "$2" | "$BB" awk -F. 'NF!=4 {exit 1} {for(i=1;i<=4;i++)if($i!~/^[0-9]+$/||$i>255)exit 1}' || fail '网关地址无效'
+    [ "${#3}" -le 32 ] || fail 'Wi-Fi 名称不能超过 32 字节'
+    [ "$(printf '%s' "$3" | tr -d '\r\n')" = "$3" ] || fail 'Wi-Fi 名称不能包含换行'
+    escaped=$(printf '%s' "$3" | sed "s/'/'\\\\''/g")
+    { printf 'AUTO_SWITCH=%s\nROUTER_GW=%s\n' "$1" "$2"; printf "HOME_SSID='%s'\n" "$escaped"; } > "$BOX/smart_home.conf.tmp"
+    mv -f "$BOX/smart_home.conf.tmp" "$BOX/smart_home.conf"
+}
+core_pid() { pidof sing-box 2>/dev/null | awk '{print $1}'; }
+restart_home() {
+    for pid in $(ps -A -o PID,ARGS | awk '$2 ~ /(^|\/)sh$/ && $3=="/data/adb/box/scripts/box.smart_home.sh" && (NF==3 || (NF==4 && $4=="run")) {print $1}'); do
+        children=$(ps -A -o PID,PPID | awk -v parent="$pid" '$2==parent {print $1}')
+        [ -z "$children" ] || kill $children 2>/dev/null || true
+        kill "$pid" 2>/dev/null || true
+        attempts=0
+        while kill -0 "$pid" 2>/dev/null && [ "$attempts" -lt 10 ]; do sleep 0.1; attempts=$((attempts+1)); done
+        kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+    done
+    if ! module_disabled; then
+        nohup "$BOX/scripts/box.smart_home.sh" >/dev/null 2>&1 < /dev/null &
+    fi
+}
+ready() {
+    n=0
+    while [ "$n" -lt 12 ]; do
+        [ -n "$(core_pid)" ] && api http://127.0.0.1:9090/configs >/dev/null 2>&1 && return 0
+        n=$((n+1)); sleep 1
+    done
+    return 1
+}
+lock_write() {
+    lock="$RUN/panel-write.lockdir"
+    attempts=0
+    until mkdir "$lock" 2>/dev/null; do
+        owner=$(cat "$lock/pid" 2>/dev/null)
+        if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then rm -f "$lock/pid"; rmdir "$lock" 2>/dev/null || true; fi
+        attempts=$((attempts+1))
+        [ "$attempts" -lt 60 ] || fail '另一个操作正在进行，请稍后再试'
+        sleep 0.1
+    done
+    echo $$ > "$lock/pid"
+    trap 'rm -f "$RUN/panel-write.lockdir/pid"; rmdir "$RUN/panel-write.lockdir" 2>/dev/null || true' EXIT
+}
+
+case "$1" in
+snapshot)
+    load_home
+    pid=$(core_pid); rss=0
+    [ -z "$pid" ] || rss=$(awk '/VmRSS/ {print $2}' "/proc/$pid/status")
+    configs=$(api http://127.0.0.1:9090/configs 2>/dev/null) || configs=null
+    proxies=$(api http://127.0.0.1:9090/proxies 2>/dev/null) || proxies=null
+    connections=$(api http://127.0.0.1:9090/connections 2>/dev/null) || connections=null
+    home=null; [ ! -s "$RUN/smart_home.json" ] || home=$(cat "$RUN/smart_home.json")
+    printf '{"core":{"running":%s,"pid":%s,"rss_kb":%s},"configs":%s,"proxies":%s,"connections":%s,"home":%s,"preferences":{"automatic":%s,"gateway":' \
+        "$([ -n "$pid" ] && echo true || echo false)" "${pid:-0}" "${rss:-0}" "$configs" "$proxies" "$connections" "$home" "$([ "$AUTO_SWITCH" = 1 ] && echo true || echo false)"
+    quote_json "$ROUTER_GW"; printf ',"ssid":'; quote_json "$HOME_SSID"; printf '}}\n'
+    ;;
+api)
+    method=$2; path=$3
+    case "$path" in *[!a-zA-Z0-9%_./?\=\&:+-]*) fail 'API 路径无效' ;; esac
+    case "$method:$path" in
+      GET:/version|GET:/configs|GET:/proxies|GET:/connections|GET:/proxies/*/delay\?timeout=4000\&url=*) api "http://127.0.0.1:9090$path" ;;
+      PUT:/proxies/PROXY|PUT:/proxies/MICROSOFT) lock_write; body=$(decode "$4") || fail '请求编码无效'; api -X PUT -H 'Content-Type: application/json' --data "$body" "http://127.0.0.1:9090$path" || exit 1; printf '{}\n' ;;
+      DELETE:/connections/*) api -X DELETE "http://127.0.0.1:9090$path" || exit 1; printf '{}\n' ;;
+      *) fail '不支持的操作' ;;
+    esac
+    ;;
+mode)
+    lock_write
+    case "$2" in Rule|Global|Direct) ;; *) fail '模式无效' ;; esac
+    load_home
+    [ ! -f "$BOX/smart_home.conf" ] || cp "$BOX/smart_home.conf" "$RUN/home-mode-backup"
+    save_home 0 "$ROUTER_GW" "$HOME_SSID"
+    if ! api -X PATCH -H 'Content-Type: application/json' --data "{\"mode\":\"$2\"}" http://127.0.0.1:9090/configs; then
+        [ ! -f "$RUN/home-mode-backup" ] || cp "$RUN/home-mode-backup" "$BOX/smart_home.conf"
+        fail '模式切换失败，已保留原自动设置'
+    fi
+    printf '{}\n'
+    ;;
+home-save)
+    lock_write
+    ssid=$(decode "$4") || fail 'Wi-Fi 名称编码无效'
+    save_home "$2" "$3" "$ssid"
+    restart_home
+    printf '{}\n'
+    ;;
+config-get) cat "$CFG" ;;
+localize)
+    lock_write
+    write_api_overlay
+    "$BOX/bin/sing-box" merge "$RUN/panel-local.json" -D "$BOX/sing-box" -c "$CFG" -c "$RUN/panel-overlay.json" >/dev/null || fail '无法合并本机管理配置'
+    "$BOX/bin/sing-box" check -D "$BOX/sing-box" -c "$RUN/panel-local.json" > "$RUN/panel-check.log" 2>&1 || fail '本机管理配置校验失败'
+    cp -p "$CFG" "$CFG.panel-backup"
+    cp "$RUN/panel-local.json" "$CFG.tmp" && mv -f "$CFG.tmp" "$CFG" || fail '无法写入本机管理配置'
+    printf '{}\n'
+    ;;
+config-save)
+    lock_write
+    [ "${#2}" -le 524288 ] || fail '配置文件过大'
+    decode "$2" > "$RUN/panel-candidate.json" || fail '配置编码无效'
+    "$BOX/bin/sing-box" check -D "$BOX/sing-box" -c "$RUN/panel-candidate.json" > "$RUN/panel-check.log" 2>&1 || { cat "$RUN/panel-check.log" >&2; exit 1; }
+    write_api_overlay
+    "$BOX/bin/sing-box" merge "$RUN/panel-normalized.json" -D "$BOX/sing-box" -c "$RUN/panel-candidate.json" -c "$RUN/panel-overlay.json" >/dev/null 2>&1 || fail '管理配置合并失败'
+    "$BOX/bin/sing-box" check -D "$BOX/sing-box" -c "$RUN/panel-normalized.json" > "$RUN/panel-check.log" 2>&1 || { cat "$RUN/panel-check.log" >&2; exit 1; }
+    cp -p "$CFG" "$CFG.panel-backup"
+    cp "$RUN/panel-normalized.json" "$CFG.tmp" && mv -f "$CFG.tmp" "$CFG" || fail '无法写入配置'
+    "$BOX/scripts/box.service" restart > "$RUN/panel-service.log" 2>&1
+    if ! ready; then cp -p "$CFG.panel-backup" "$CFG"; "$BOX/scripts/box.service" restart >> "$RUN/panel-service.log" 2>&1; fail '新配置启动失败，已还原上一次配置'; fi
+    ensure_tproxy
+    restart_home; printf '{}\n'
+    ;;
+restart)
+    lock_write
+    module_disabled && fail '模块当前已禁用，请先在 KernelSU 中启用模块'
+    "$BOX/scripts/box.service" restart > "$RUN/panel-service.log" 2>&1
+    ready || fail '核心未就绪，请查看运行日志'
+    ensure_tproxy
+    restart_home; printf '{}\n'
+    ;;
+logs) tail -n 80 "$RUN/sing-box.log" 2>/dev/null ;;
+*) fail '未知操作' ;;
+esac
