@@ -84,6 +84,12 @@
       }
     ]
   },
+  "http_clients": [
+    {
+      "tag": "proxy-http",
+      "detour": "PROXY"
+    }
+  ],
   "inbounds": [
     {
       "type": "tproxy",
@@ -316,21 +322,21 @@
         "type": "remote",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
-        "download_detour": "PROXY"
+        "http_client": "proxy-http"
       },
       {
         "tag": "geosite-cn",
         "type": "remote",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-        "download_detour": "PROXY"
+        "http_client": "proxy-http"
       },
       {
         "tag": "geosite-microsoft",
         "type": "remote",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-microsoft.srs",
-        "download_detour": "PROXY"
+        "http_client": "proxy-http"
       }
     ],
     "final": "PROXY",

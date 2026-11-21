@@ -49,17 +49,26 @@ api() {
 sync_ips_if_needed() {
     [ -x "$BOX/scripts/box.tproxy" ] || return 0
     local state_file="$RUN/local_ips.state"
-    local v4_list v6_list cur_state saved_state
-
-    v4_list=$(ip -4 addr show 2>/dev/null | awk '/inet / {sub(/\/.*/, "", $2); if ($2 != "" && $2 !~ /^127\./) print $2 "/32"}' | sort -u)
-    v6_list=$( {
-        ip -6 addr show scope global 2>/dev/null | awk '/inet6 / {sub(/\/.*/, "", $2); if ($2 != "" && $2 !~ /^fe80:|^::1$|^::$/) print $2 "/128"}'
-        ip -6 route show table all 2>/dev/null | awk '($0 ~ /proto kernel/ || $0 ~ /table local_network/) && $1 ~ /^[0-9a-fA-F:]+\/[0-9]+$/ && $1 !~ /^fe80:|^ff00:|^::1\/|^::\// {print $1}'
-    } | sort -u )
-    cur_state="v4:${v4_list};v6:${v6_list}"
+    local v4_list v6_list cur_state saved_state v6_en=1
 
     if [ -f "$state_file" ]; then
         saved_state=$(cat "$state_file" 2>/dev/null)
+        case "$saved_state" in
+            'v6en:0;'*) v6_en=0 ;;
+        esac
+    fi
+
+    v4_list=$(ip -4 addr show 2>/dev/null | awk '/inet / {sub(/\/.*/, "", $2); if ($2 != "" && $2 !~ /^127\./) print $2 "/32"}' | sort -u)
+    v6_list=""
+    if [ "$v6_en" = "1" ]; then
+        v6_list=$( {
+            ip -6 addr show scope global 2>/dev/null | awk '/inet6 / {sub(/\/.*/, "", $2); if ($2 != "" && $2 !~ /^fe80:|^::1$|^::$/) print $2 "/128"}'
+            ip -6 route show table all 2>/dev/null | awk '($0 ~ /proto kernel/ || $0 ~ /table local_network/) && $1 ~ /^[0-9a-fA-F:]+\/[0-9]+$/ && $1 !~ /^fe80:|^ff00:|^::1\/|^::\// {print $1}'
+        } | sort -u )
+    fi
+    cur_state="v6en:${v6_en};v4:${v4_list};v6:${v6_list}"
+
+    if [ -f "$state_file" ]; then
         [ "$cur_state" = "$saved_state" ] && return 0
     else
         # Avoid repeatedly spawning box.tproxy when TPROXY is intentionally disabled.

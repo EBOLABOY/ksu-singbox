@@ -3,6 +3,7 @@
 
   const $ = id => document.getElementById(id);
   const quote = value => "'" + String(value).replace(/'/g, "'\\''") + "'";
+  const encodeSegment = value => encodeURIComponent(value).replace(/[!'()*~]/g, ch => '%' + ch.charCodeAt(0).toString(16).toUpperCase());
   const base64 = value => btoa(Array.from(new TextEncoder().encode(value), b => String.fromCharCode(b)).join(''));
   const icon = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
   const create = (tag, cls, text) => {
@@ -380,7 +381,7 @@
 
   async function testNode(name) {
     try {
-      const result = await api('GET', `/proxies/${encodeURIComponent(name)}/delay?timeout=4000&url=http%3A%2F%2Fcp.cloudflare.com%2Fgenerate_204`);
+      const result = await api('GET', `/proxies/${encodeSegment(name)}/delay?timeout=4000&url=http%3A%2F%2Fcp.cloudflare.com%2Fgenerate_204`);
       state.delays.set(name, Number(result.delay) || Infinity);
     } catch (_) {
       state.delays.set(name, Infinity);
@@ -436,7 +437,7 @@
       close.innerHTML = icon('close');
       close.setAttribute('aria-label', `关闭 ${host} 的连接`);
       close.onclick = () => write(async () => {
-        await api('DELETE', `/connections/${encodeURIComponent(c.id)}`);
+        await api('DELETE', `/connections/${encodeSegment(c.id)}`);
         notify('连接已关闭');
       });
       row.append(copy, close);

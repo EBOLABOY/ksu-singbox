@@ -137,7 +137,7 @@ sync_local_ips() {
   fi
 
   state_file="${run_path}/local_ips.state"
-  new_state="v4:${v4_list};v6:${v6_list}"
+  new_state="v6en:${has_v6};v4:${v4_list};v6:${v6_list}"
   old_state=$(cat "${state_file}" 2>/dev/null)
 
   if [ "${force}" = "--force" ] || [ "${new_state}" != "${old_state}" ] ; then
@@ -583,7 +583,7 @@ apply_rules() {
   normalize_network_lists
   find_packages_uid
   if [ "${proxy_method}" = "TPROXY" ] ; then
-    if (zcat /proc/config.gz 2>/dev/null | grep -q TPROXY) ; then
+    if (zcat /proc/config.gz 2>/dev/null | grep -q TPROXY) || grep -qw TPROXY /proc/net/ip_tables_targets 2>/dev/null ; then
       log Info "use TPROXY:TCP+UDP."
       log Info "creating ip(6)tables transparent proxy rules."
       iptables="iptables -w 100"

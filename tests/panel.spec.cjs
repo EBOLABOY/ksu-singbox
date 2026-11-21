@@ -92,6 +92,7 @@ const tags = [
     if (op === 'logs') return '2026-11-21 核心已启动\nERROR sample';
     if (op === 'restart') return '{}';
     if (op === 'api') {
+      if (!/^[a-zA-Z0-9%_./?=&:+-]+$/.test(args[2])) throw new Error('API 路径无效: ' + args[2]);
       if (args[2] === '/version') return JSON.stringify({ version: 'sing-box 1.14.4' });
       if (args[1] === 'PUT') {
         if (failPut) throw new Error('模拟节点切换失败');
