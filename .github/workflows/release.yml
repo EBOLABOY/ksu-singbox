@@ -1,0 +1,140 @@
+name: Build and Release KernelSU Module
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Optional release tag (defaults to version in module.prop)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ksu-singbox-release
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate JSON templates
+        run: |
+          python3 -m json.tool box/sing-box/config.json > /dev/null
+          python3 -m json.tool box/sing-box/config.example.json > /dev/null
+
+      - name: Build ksu-singbox.zip
+        run: |
+          python3 build.sh
+          sha256sum ksu-singbox.zip > ksu-singbox.zip.sha256
+          ls -lh ksu-singbox.zip ksu-singbox.zip.sha256
+          cat ksu-singbox.zip.sha256
+
+      - name: Resolve release tag and notes
+        id: meta
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+          elif [ "$REF_TYPE" = "tag" ]; then
+            TAG="$REF_NAME"
+          else
+            TAG=$(awk -F= '$1=="version"{print $2; exit}' module.prop | tr -d '\r\n ')
+          fi
+          [ -n "$TAG" ] || { echo "Failed to resolve version tag"; exit 1; }
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          python3 - "$TAG" <<'PY'
+          import sys, pathlib, subprocess
+
+          tag = sys.argv[1]
+          changelog = pathlib.Path("changelog.md").read_text(encoding="utf-8") if pathlib.Path("changelog.md").exists() else ""
+          section = []
+          in_section = False
+          for line in changelog.splitlines():
+              if line.startswith("# "):
+                  if in_section:
+                      break
+                  if line.strip() == f"# {tag}":
+                      in_section = True
+                      continue
+              elif in_section:
+                  section.append(line)
+
+          body_lines = [
+              f"## sing-box for KernelSU {tag}",
+              "",
+              "### 安装方式",
+              "1. 下载下方附件 **`ksu-singbox.zip`** 并传到手机。",
+              "2. 打开 **KernelSU 管理器 → 模块 → 安装**，选择 `ksu-singbox.zip` 刷入后重启手机。",
+              "3. 在 KernelSU 模块卡片打开内嵌配置面板，前往 **节点 → `+ 导入`** 导入你自己的节点链接即可使用。",
+              "",
+              "> **提示**：刷机包内仅包含占位示例节点，覆盖升级会自动保留 `/data/adb/box/` 中原有的节点与设置。",
+              "",
+          ]
+          cleaned = "\n".join(section).strip()
+          if cleaned:
+              body_lines += ["### 更新内容", "", cleaned, ""]
+          else:
+              commit_msg = subprocess.check_output(["git", "log", "-1", "--pretty=%s"], text=True).strip()
+              body_lines += ["### 本次构建", "", f"- {commit_msg}", ""]
+
+          sha = pathlib.Path("ksu-singbox.zip.sha256").read_text(encoding="utf-8").strip()
+          body_lines += [
+              "### 校验信息 (SHA-256)",
+              "```text",
+              sha,
+              "```",
+          ]
+          pathlib.Path("release_notes.md").write_text("\n".join(body_lines) + "\n", encoding="utf-8")
+          PY
+          cat release_notes.md
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ksu-singbox-${{ steps.meta.outputs.tag }}
+          path: |
+            ksu-singbox.zip
+            ksu-singbox.zip.sha256
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" != "tag" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -f "$TAG" "$GITHUB_SHA"
+            git push -f origin "refs/tags/$TAG"
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" ksu-singbox.zip ksu-singbox.zip.sha256 --clobber
+            gh release edit "$TAG" \
+              --title "sing-box for KernelSU $TAG" \
+              --notes-file release_notes.md \
+              --latest
+          else
+            gh release create "$TAG" ksu-singbox.zip ksu-singbox.zip.sha256 \
+              --title "sing-box for KernelSU $TAG" \
+              --notes-file release_notes.md \
+              --latest
+          fi
