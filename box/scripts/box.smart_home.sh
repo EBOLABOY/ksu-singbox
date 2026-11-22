@@ -10,8 +10,9 @@ API_SECRET_FILE="$BOX/api.secret"
 mkdir -p "$RUN"
 umask 077
 
-# Escape app cgroup freezer in case we were launched from KernelSU Manager WebUI.
+# Escape app cgroup freezer & /apps memcg in case we were launched from KernelSU Manager WebUI.
 echo $$ > /sys/fs/cgroup/cgroup.procs 2>/dev/null || echo $$ > /acct/cgroup.procs 2>/dev/null || true
+[ -w /dev/memcg/cgroup.procs ] && echo $$ > /dev/memcg/cgroup.procs 2>/dev/null || true
 
 single="$RUN/smart_home.lockdir"
 if ! mkdir "$single" 2>/dev/null; then

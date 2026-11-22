@@ -55,10 +55,20 @@ const tags = [
     route: {
       rules: [
         { ip_is_private: true, outbound: 'direct' },
-        { domain_suffix: ['pushplus.plus'], outbound: 'direct' }
+        { domain_suffix: ['pushplus.plus'], outbound: 'direct' },
+        { rule_set: 'geosite-cn', outbound: 'direct' }
       ]
     },
-    dns: { servers: [{ tag: 'dns-direct', type: 'udp', server: '223.5.5.5' }], rules: [] },
+    dns: {
+      servers: [
+        { tag: 'dns-direct', type: 'udp', server: '223.5.5.5' },
+        { tag: 'dns-fakeip', type: 'fakeip', inet4_range: '198.18.0.0/15' }
+      ],
+      rules: [
+        { rule_set: 'geosite-cn', server: 'dns-direct' },
+        { query_type: ['A', 'AAAA'], server: 'dns-fakeip' }
+      ]
+    },
     experimental: { clash_api: {} }
   };
 
@@ -202,6 +212,14 @@ const tags = [
   assert(aiGroup && aiGroup.outbounds.includes('Sample-US-ATT-Clean') && aiGroup.default === 'Sample-US-ATT-Clean');
   const proxyGroup = config.outbounds.find(o => o.tag === 'PROXY');
   assert(!proxyGroup.outbounds.includes('Sample-US-ATT-Clean'), 'Chained SOCKS node must not be added to PROXY');
+  // Verify AI DNS & IPv6-reject route rules are inserted BEFORE compacted string "geosite-cn"
+  const aiDnsIdx = config.dns.rules.findIndex(r => (Array.isArray(r.rule_set) ? r.rule_set.includes('geosite-category-ai-!cn') : r.rule_set === 'geosite-category-ai-!cn'));
+  const cnDnsIdx = config.dns.rules.findIndex(r => r.rule_set === 'geosite-cn');
+  assert(aiDnsIdx >= 0 && aiDnsIdx < cnDnsIdx, `AI DNS rule (${aiDnsIdx}) must precede geosite-cn (${cnDnsIdx})`);
+  const aiV6RejectIdx = config.route.rules.findIndex(r => r.ip_version === 6 && r.action === 'reject');
+  const aiRouteIdx = config.route.rules.findIndex(r => r.outbound === 'AI');
+  const cnRouteIdx = config.route.rules.findIndex(r => r.rule_set === 'geosite-cn');
+  assert(aiV6RejectIdx >= 0 && aiV6RejectIdx < aiRouteIdx && aiRouteIdx < cnRouteIdx, 'AI IPv6 reject must precede AI route and geosite-cn');
 
   await page.locator('[data-group="AI"]').click();
   assert.equal(await page.locator('.node-card').count(), 2);

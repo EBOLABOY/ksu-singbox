@@ -396,6 +396,48 @@
         "action": "reject"
       },
       {
+        "ip_version": 6,
+        "rule_set": [
+          "geosite-category-ai-!cn"
+        ],
+        "action": "reject"
+      },
+      {
+        "ip_version": 6,
+        "domain_suffix": [
+          "gemini.google.com",
+          "generativelanguage.googleapis.com",
+          "aistudio.google.com",
+          "makersuite.google.com",
+          "robinfrontend-pa.googleapis.com",
+          "proactivebackend-pa.googleapis.com",
+          "geller-pa.googleapis.com",
+          "alkalimakersuite-pa.clients6.google.com",
+          "aisandbox-pa.googleapis.com",
+          "notebooklm.google.com",
+          "notebooklm.google",
+          "deepmind.com",
+          "deepmind.google",
+          "labs.google",
+          "bard.google.com",
+          "openai.com",
+          "chatgpt.com",
+          "oaistatic.com",
+          "oaiusercontent.com",
+          "sora.com",
+          "anthropic.com",
+          "claude.ai",
+          "claude.com",
+          "claudeusercontent.com",
+          "perplexity.ai",
+          "x.ai",
+          "grok.com",
+          "cursor.com",
+          "cursor.sh"
+        ],
+        "action": "reject"
+      },
+      {
         "rule_set": [
           "geosite-category-ai-!cn"
         ],

@@ -587,6 +587,10 @@
     'claudeusercontent.com', 'perplexity.ai', 'x.ai', 'grok.com', 'cursor.com', 'cursor.sh'
   ];
 
+  const hasRuleSet = (rule, tag) => Array.isArray(rule?.rule_set)
+    ? rule.rule_set.includes(tag)
+    : rule?.rule_set === tag;
+
   function ensureAiRouting(config) {
     config.outbounds ||= [];
     let aiGroup = config.outbounds.find(o => o.tag === 'AI');
@@ -617,20 +621,29 @@
 
     config.route.rules ||= [];
     if (!config.route.rules.some(r => r.outbound === 'AI')) {
-      const cnIdx = config.route.rules.findIndex(r => Array.isArray(r.rule_set) && (r.rule_set.includes('geoip-cn') || r.rule_set.includes('geosite-cn')));
+      const cnIdx = config.route.rules.findIndex(r => hasRuleSet(r, 'geoip-cn') || hasRuleSet(r, 'geosite-cn'));
       const aiRules = [
         { network: 'udp', port: 443, rule_set: ['geosite-category-ai-!cn'], action: 'reject' },
         { network: 'udp', port: 443, domain_suffix: [...AI_DOMAINS], action: 'reject' },
+        { ip_version: 6, rule_set: ['geosite-category-ai-!cn'], action: 'reject' },
+        { ip_version: 6, domain_suffix: [...AI_DOMAINS], action: 'reject' },
         { rule_set: ['geosite-category-ai-!cn'], outbound: 'AI' },
         { domain_suffix: [...AI_DOMAINS], outbound: 'AI' }
       ];
       config.route.rules.splice(cnIdx >= 0 ? cnIdx : config.route.rules.length, 0, ...aiRules);
+    } else if (!config.route.rules.some(r => r.ip_version === 6 && r.action === 'reject' && hasRuleSet(r, 'geosite-category-ai-!cn'))) {
+      const aiIdx = config.route.rules.findIndex(r => r.outbound === 'AI');
+      const v6RejectRules = [
+        { ip_version: 6, rule_set: ['geosite-category-ai-!cn'], action: 'reject' },
+        { ip_version: 6, domain_suffix: [...AI_DOMAINS], action: 'reject' }
+      ];
+      config.route.rules.splice(aiIdx >= 0 ? aiIdx : config.route.rules.length, 0, ...v6RejectRules);
     }
 
     if (config.dns?.servers?.some(s => s.type === 'fakeip')) {
       config.dns.rules ||= [];
-      if (!config.dns.rules.some(r => Array.isArray(r.rule_set) && r.rule_set.includes('geosite-category-ai-!cn'))) {
-        const cnDnsIdx = config.dns.rules.findIndex(r => Array.isArray(r.rule_set) && r.rule_set.includes('geosite-cn'));
+      if (!config.dns.rules.some(r => hasRuleSet(r, 'geosite-category-ai-!cn'))) {
+        const cnDnsIdx = config.dns.rules.findIndex(r => hasRuleSet(r, 'geosite-cn'));
         const aiDnsRules = [
           { rule_set: ['geosite-category-ai-!cn'], server: 'dns-fakeip' },
           { domain_suffix: [...AI_DOMAINS], server: 'dns-fakeip' }

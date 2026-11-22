@@ -1,6 +1,7 @@
 # v1.3.2
 
-- Added residential proxy (`socks://` / `socks5://` / `http://`) link import with automatic `AI` routing group (`Gemini` / `OpenAI` / `Claude`, backed by `geosite-category-ai-!cn` + explicit mobile API domain rules) and optional chained transit (`detour: "PROXY"`) with cycle prevention.
+- Added residential proxy (`socks://` / `socks5://` / `http://`) link import with automatic `AI` routing group (`Gemini` / `OpenAI` / `Claude`, backed by `geosite-category-ai-!cn` + explicit mobile API domain rules), IPv6 instant reject fallback (`ip_version: 6 -> reject` to avoid IPv4-only residential SOCKS5 `code=4` stalls), string/array `rule_set` compatibility after `sing-box merge`, and optional chained transit (`detour: "PROXY"`) with cycle prevention.
+- Accelerated `box.tproxy` rule installation from ~24s to <0.5s via atomic `iptables-restore` / `ip6tables-restore --noflush --wait=10` single-transaction `mangle` setup (with sequential fallback) and moved `box.smart_home.sh` out of `/apps` memcg.
 - Prevented `customize.sh` from downgrading a manually updated `sing-box` binary on upgrade (semver-aware replacement).
 - Moved `sing-box` out of `/apps` memcg (`swappiness=100`) into root `/dev/memcg` (`swappiness=30`) in `box.service` to prevent aggressive swapping under Android memory pressure.
 - Cleaned up `box.ui localize` stderr output from `sing-box merge` and updated version metadata consistently across `module.prop` and WebUI.

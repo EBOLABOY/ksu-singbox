@@ -293,8 +293,163 @@ stop_redirect() {
   ${iptables} -t nat -X LOCAL_IP_V4 2>/dev/null || true
 }
 
+emit_tproxy_mangle_rules() {
+  local is_v6="$1"
+  local local_chain="LOCAL_IP_V4"
+  local fake_range="${fake_ip_range_v4}"
+  if [ "${is_v6}" = "1" ] ; then
+    local_chain="LOCAL_IP_V6"
+    fake_range="${fake_ip_range_v6}"
+  fi
+
+  printf '*mangle\n'
+  printf ':DIVERT - [0:0]\n'
+  printf ':BOX_EXTERNAL - [0:0]\n'
+  printf ':BOX_LOCAL - [0:0]\n'
+  printf ':%s - [0:0]\n' "${local_chain}"
+  printf '%s\n' '-F DIVERT'
+  printf '%s\n' '-F BOX_EXTERNAL'
+  printf '%s\n' '-F BOX_LOCAL'
+  printf -- '-F %s\n' "${local_chain}"
+
+  printf -- '-A DIVERT -j MARK --set-xmark %s\n' "${mark_id}"
+  printf '%s\n' '-A DIVERT -j ACCEPT'
+
+  # 1. Existing transparent TCP sockets (accepted by sing-box) -> DIVERT.
+  #    UDP intentionally does NOT use DIVERT (sing-box binds write-only transparent UDP reply sockets).
+  printf '%s\n' '-A BOX_EXTERNAL -p tcp -m socket --transparent -j DIVERT'
+  # 2. Existing non-transparent TCP sockets (sing-box outbound, bypassed apps, adbd) -> RETURN.
+  printf '%s\n' '-A BOX_EXTERNAL -p tcp -m socket -j RETURN'
+  # 3. Never hijack unmarked loopback traffic (prevents loopback self-amplification storms).
+  printf -- '-A BOX_EXTERNAL -i lo -m mark ! --mark %s -j RETURN\n' "${mark_id}"
+
+  # 4. Route DNS (port 53) from marked local traffic and hotspot interfaces to Box BEFORE intranet bypass.
+  if [ "${mihome_dns_forward}" = "true" ] && [ "${bin_name}" = "mihomo" ] || [ "${bin_name}" = "hysteria" ] || [ "${bin_name}" = "clash" ] ; then
+    printf '%s\n' '-A BOX_EXTERNAL -p tcp --dport 53 -j RETURN'
+    printf '%s\n' '-A BOX_EXTERNAL -p udp --dport 53 -j RETURN'
+  else
+    printf -- '-A BOX_EXTERNAL -i lo -p tcp --dport 53 -j TPROXY --on-port %s --tproxy-mark %s\n' "${tproxy_port}" "${mark_id}"
+    printf -- '-A BOX_EXTERNAL -i lo -p udp --dport 53 -j TPROXY --on-port %s --tproxy-mark %s\n' "${tproxy_port}" "${mark_id}"
+    if [ "${#effective_ap_list[@]}" -gt 0 ] ; then
+      for ap in "${effective_ap_list[@]}" ; do
+        printf -- '-A BOX_EXTERNAL -i %s -p tcp --dport 53 -j TPROXY --on-port %s --tproxy-mark %s\n' "${ap}" "${tproxy_port}" "${mark_id}"
+        printf -- '-A BOX_EXTERNAL -i %s -p udp --dport 53 -j TPROXY --on-port %s --tproxy-mark %s\n' "${ap}" "${tproxy_port}" "${mark_id}"
+      done
+    fi
+  fi
+
+  # 5. Bypass reserved/intranet ranges + dynamically maintained local interface addresses
+  if [ "${is_v6}" = "1" ] ; then
+    for subnet6 in "${effective_intranet6[@]}" ; do
+      printf -- '-A BOX_EXTERNAL -d %s -j RETURN\n' "${subnet6}"
+    done
+  else
+    for subnet in "${effective_intranet[@]}" ; do
+      printf -- '-A BOX_EXTERNAL -d %s -j RETURN\n' "${subnet}"
+    done
+  fi
+  printf -- '-A BOX_EXTERNAL -j %s\n' "${local_chain}"
+
+  # 6. Intercept marked local traffic arriving on lo
+  printf -- '-A BOX_EXTERNAL -p tcp -i lo -j TPROXY --on-port %s --tproxy-mark %s\n' "${tproxy_port}" "${mark_id}"
+  printf -- '-A BOX_EXTERNAL -p udp -i lo -j TPROXY --on-port %s --tproxy-mark %s\n' "${tproxy_port}" "${mark_id}"
+
+  # 7. Intercept hotspot/tethering downstream traffic (excludes STA uplink wlan0)
+  if [ "${#effective_ap_list[@]}" -gt 0 ] ; then
+    for ap in "${effective_ap_list[@]}" ; do
+      printf -- '-A BOX_EXTERNAL -p tcp -i %s -j TPROXY --on-port %s --tproxy-mark %s\n' "${ap}" "${tproxy_port}" "${mark_id}"
+      printf -- '-A BOX_EXTERNAL -p udp -i %s -j TPROXY --on-port %s --tproxy-mark %s\n' "${ap}" "${tproxy_port}" "${mark_id}"
+    done
+  fi
+
+  # BOX_LOCAL: 1. Bypass box itself
+  printf -- '-A BOX_LOCAL -m owner --uid-owner %s --gid-owner %s -j RETURN\n' "${box_user}" "${box_group}"
+
+  # 2. Bypass ALL traffic exiting through hotspot/tethering interfaces (kernel SYN-ACK/RST where sk_socket is NULL)
+  if [ "${#effective_ap_list[@]}" -gt 0 ] ; then
+    for ap in "${effective_ap_list[@]}" ; do
+      printf -- '-A BOX_LOCAL -o %s -j RETURN\n' "${ap}"
+    done
+  fi
+
+  # 3. Bypass explicitly ignored outbound interfaces
+  if [ "${#ignore_out_list[@]}" -gt 0 ] ; then
+    for ignore in "${ignore_out_list[@]}" ; do
+      printf -- '-A BOX_LOCAL -o %s -j RETURN\n' "${ignore}"
+    done
+  fi
+
+  # 4. Mark FakeIP destinations before app bypass
+  if [ "${bin_name}" = "sing-box" ] && [ -n "${fake_range}" ] ; then
+    printf -- '-A BOX_LOCAL -d %s -p tcp -j MARK --set-xmark %s\n' "${fake_range}" "${mark_id}"
+    printf -- '-A BOX_LOCAL -d %s -p udp -j MARK --set-xmark %s\n' "${fake_range}" "${mark_id}"
+    printf -- '-A BOX_LOCAL -d %s -j RETURN\n' "${fake_range}"
+  fi
+
+  # 5. Route local DNS requests to Box
+  if [ "${mihome_dns_forward}" = "true" ] && [ "${bin_name}" = "mihomo" ] || [ "${bin_name}" = "hysteria" ] || [ "${bin_name}" = "clash" ] ; then
+    printf '%s\n' '-A BOX_LOCAL -p tcp --dport 53 -j RETURN'
+    printf '%s\n' '-A BOX_LOCAL -p udp --dport 53 -j RETURN'
+  else
+    printf -- '-A BOX_LOCAL -p tcp --dport 53 -j MARK --set-xmark %s\n' "${mark_id}"
+    printf -- '-A BOX_LOCAL -p udp --dport 53 -j MARK --set-xmark %s\n' "${mark_id}"
+  fi
+
+  # 6. Bypass reserved/intranet ranges + dynamically maintained local interface addresses
+  if [ "${is_v6}" = "1" ] ; then
+    for subnet6 in "${effective_intranet6[@]}" ; do
+      printf -- '-A BOX_LOCAL -d %s -j RETURN\n' "${subnet6}"
+    done
+  else
+    for subnet in "${effective_intranet[@]}" ; do
+      printf -- '-A BOX_LOCAL -d %s -j RETURN\n' "${subnet}"
+    done
+  fi
+  printf -- '-A BOX_LOCAL -j %s\n' "${local_chain}"
+
+  # 7. App UID/GID selection
+  if [ "${proxy_mode}" = "blacklist" ] ; then
+    for appid in "${uid_list[@]}" ; do
+      printf -- '-A BOX_LOCAL -m owner --uid-owner %s -j RETURN\n' "${appid}"
+    done
+    for gid in "${gid_list[@]}" ; do
+      printf -- '-A BOX_LOCAL -m owner --gid-owner %s -j RETURN\n' "${gid}"
+    done
+    printf -- '-A BOX_LOCAL -p tcp -j MARK --set-xmark %s\n' "${mark_id}"
+    printf -- '-A BOX_LOCAL -p udp -j MARK --set-xmark %s\n' "${mark_id}"
+  elif [ "${proxy_mode}" = "whitelist" ] ; then
+    if [ "${#uid_list[@]}" -gt 0 ] ; then
+      for appid in "${uid_list[@]}" ; do
+        printf -- '-A BOX_LOCAL -p tcp -m owner --uid-owner %s -j MARK --set-xmark %s\n' "${appid}" "${mark_id}"
+        printf -- '-A BOX_LOCAL -p udp -m owner --uid-owner %s -j MARK --set-xmark %s\n' "${appid}" "${mark_id}"
+      done
+      printf -- '-A BOX_LOCAL -p tcp -m owner --uid-owner 0 -j MARK --set-xmark %s\n' "${mark_id}"
+      printf -- '-A BOX_LOCAL -p udp -m owner --uid-owner 0 -j MARK --set-xmark %s\n' "${mark_id}"
+      printf -- '-A BOX_LOCAL -p tcp -m owner --uid-owner 1052 -j MARK --set-xmark %s\n' "${mark_id}"
+      printf -- '-A BOX_LOCAL -p udp -m owner --uid-owner 1052 -j MARK --set-xmark %s\n' "${mark_id}"
+    fi
+    if [ "${#gid_list[@]}" -gt 0 ] ; then
+      for gid in "${gid_list[@]}" ; do
+        printf -- '-A BOX_LOCAL -p tcp -m owner --gid-owner %s -j MARK --set-xmark %s\n' "${gid}" "${mark_id}"
+        printf -- '-A BOX_LOCAL -p udp -m owner --gid-owner %s -j MARK --set-xmark %s\n' "${gid}" "${mark_id}"
+      done
+    fi
+  else
+    printf -- '-A BOX_LOCAL -p tcp -j MARK --set-xmark %s\n' "${mark_id}"
+    printf -- '-A BOX_LOCAL -p udp -j MARK --set-xmark %s\n' "${mark_id}"
+  fi
+
+  printf '%s\n' '-I PREROUTING 1 -j BOX_EXTERNAL'
+  printf '%s\n' '-I OUTPUT 1 -j BOX_LOCAL'
+  printf 'COMMIT\n'
+}
+
 start_tproxy() {
+  local is_v6=0
+  local restore_bin="iptables-restore"
   if [ "${iptables}" = "ip6tables -w 100" ] ; then
+    is_v6=1
+    restore_bin="ip6tables-restore"
     while ip -6 rule del fwmark ${mark_id} table ${table_id} pref ${table_id} 2>/dev/null ; do : ; done
     ip -6 rule add fwmark ${mark_id} table ${table_id} pref ${table_id} || return 1
     ip -6 route replace local default dev lo table ${table_id} || return 1
@@ -304,6 +459,31 @@ start_tproxy() {
     ip route replace local default dev lo table ${table_id} || return 1
   fi
 
+  # Atomic single-transaction mangle setup (~0.2s vs ~24s sequential forks), with sequential fallback.
+  local atomic_ok=0
+  if command -v "${restore_bin}" >/dev/null 2>&1 ; then
+    if emit_tproxy_mangle_rules "${is_v6}" | "${restore_bin}" --noflush --wait=10 2>/dev/null ; then
+      atomic_ok=1
+      [ "${#effective_ap_list[@]}" -gt 0 ] && log Info "${effective_ap_list[*]} transparent proxy."
+      [ "${#ignore_out_list[@]}" -gt 0 ] && log Info "${ignore_out_list[*]} ignore transparent proxy."
+      if [ "${proxy_mode}" = "blacklist" ] ; then
+        if [ "${#uid_list[@]}" -eq 0 ] && [ "${#gid_list[@]}" -eq 0 ] ; then
+          log Info "transparent proxy for all apps."
+        else
+          [ "${#uid_list[@]}" -gt 0 ] && log Info "proxy mode: ${proxy_mode}, ${user_packages_list[*]} no transparent proxy."
+          [ "${#gid_list[@]}" -gt 0 ] && log Info "proxy mode: ${proxy_mode}, GID ${gid_list[*]} no transparent proxy."
+        fi
+      elif [ "${proxy_mode}" = "whitelist" ] ; then
+        [ "${#uid_list[@]}" -gt 0 ] && log Info "proxy mode: ${proxy_mode}, ${user_packages_list[*]} transparent proxy."
+        [ "${#gid_list[@]}" -gt 0 ] && log Info "proxy mode: ${proxy_mode}, GID ${gid_list[*]} transparent proxy."
+      else
+        log Warn "proxy mode: ${proxy_mode} error."
+        log Info "transparent proxy for all apps."
+      fi
+    fi
+  fi
+
+  if [ "${atomic_ok}" != "1" ] ; then
   ${iptables} -t mangle -N DIVERT 2>/dev/null || true
   ${iptables} -t mangle -F DIVERT
   ${iptables} -t mangle -A DIVERT -j MARK --set-xmark ${mark_id}
@@ -474,6 +654,7 @@ start_tproxy() {
   fi
 
   ${iptables} -t mangle -I OUTPUT -j BOX_LOCAL
+  fi
 
   # Block box process from directly dialing local tproxy_port to prevent loopback
   if [ "${iptables}" = "ip6tables -w 100" ] ; then
